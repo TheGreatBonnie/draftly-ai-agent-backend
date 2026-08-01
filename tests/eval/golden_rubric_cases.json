@@ -1,0 +1,31 @@
+{
+  "cases": [
+    {
+      "id": "case-001",
+      "content": "Run `npm install` to set up the project.",
+      "rubric": "### Completeness (Required)\n- All steps are clearly documented in logical order\n- Prerequisites and dependencies listed",
+      "evidence": "The setup requires Node 20+, running `npm install`, then `npm run dev`.",
+      "criteria": [
+        {"name": "Completeness", "passed": false}
+      ]
+    },
+    {
+      "id": "case-002",
+      "content": "Create the .env file from .env.example, then run `docker compose up -d`.",
+      "rubric": "### Completeness (Required)\n- All steps are clearly documented in logical order\n- Prerequisites and dependencies listed",
+      "evidence": "Setup: copy .env.example to .env, then start the stack with docker compose up -d.",
+      "criteria": [
+        {"name": "Completeness", "passed": true}
+      ]
+    },
+    {
+      "id": "case-003",
+      "content": "The API supports the /v1/resolve endpoint returning JSON.",
+      "rubric": "### Accuracy (Required)\n- All API references are correct\n- No hallucinated functions, classes, or methods",
+      "evidence": "The service exposes GET /v1/health returning JSON. There is no /v1/resolve endpoint.",
+      "criteria": [
+        {"name": "Accuracy", "passed": false}
+      ]
+    }
+  ]
+}
