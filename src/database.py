@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any, cast
 
 import asyncpg  # type: ignore[import-untyped]
@@ -54,3 +56,31 @@ async def execute(query: str, *args: Any) -> str:
 async def fetch_val(query: str, *args: Any) -> Any | None:
     pool = await get_pool()
     return await pool.fetchval(query, *args)
+
+
+@asynccontextmanager
+async def transaction(isolation: str = "serializable") -> AsyncIterator[asyncpg.Connection]:
+    """Run work on a single pooled connection inside an explicit transaction.
+
+    CockroachDB is SERIALIZABLE by default; passing the isolation explicitly
+    keeps intent clear and testable.
+    """
+    pool = await get_pool()
+    conn = await pool.acquire()
+    try:
+        async with conn.transaction(isolation=isolation):
+            yield conn
+    finally:
+        await pool.release(conn)
+
+
+async def execute_conn(conn: asyncpg.Connection, query: str, *args: Any) -> str:
+    result = await conn.execute(query, *args)
+    return cast(str, result)
+
+
+async def fetch_one_conn(
+    conn: asyncpg.Connection, query: str, *args: Any
+) -> dict[str, Any] | None:
+    row = await conn.fetchrow(query, *args)
+    return cast(dict[str, Any] | None, row)
