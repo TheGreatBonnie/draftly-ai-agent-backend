@@ -59,6 +59,22 @@ variable "api_domain" {
   type        = string
 }
 
+data "aws_secretsmanager_secret" "draftly_env" {
+  name = "draftly/${var.environment}/env"
+}
+
+data "aws_secretsmanager_secret_version" "draftly_env" {
+  secret_id = data.aws_secretsmanager_secret.draftly_env.id
+}
+
+data "aws_secretsmanager_secret" "github_private_key" {
+  name = "draftly/${var.environment}/github-private-key"
+}
+
+data "aws_secretsmanager_secret_version" "github_private_key" {
+  secret_id = data.aws_secretsmanager_secret.github_private_key.id
+}
+
 resource "aws_ecs_cluster" "draftly" {
   name = "${var.project_name}-${var.environment}-cluster"
 
@@ -100,6 +116,17 @@ resource "aws_ecs_task_definition" "draftly" {
         {
           name  = "COCKROACHDB_URL"
           value = var.cockroachdb_url
+        }
+      ]
+
+      secrets = [
+        {
+          name      = "DRAFTLY_ENV_JSON"
+          valueFrom = data.aws_secretsmanager_secret_version.draftly_env.arn
+        },
+        {
+          name      = "GITHUB_PRIVATE_KEY_B64"
+          valueFrom = data.aws_secretsmanager_secret_version.github_private_key.arn
         }
       ]
 
