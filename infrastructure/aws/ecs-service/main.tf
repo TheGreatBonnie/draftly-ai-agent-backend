@@ -19,7 +19,12 @@ variable "subnet_ids" {
 }
 
 variable "public_subnet_ids" {
-  description = "Public subnet IDs for the ALB"
+  description = "Public subnet IDs for the NLB"
+  type        = list(string)
+}
+
+variable "eip_allocation_ids" {
+  description = "Elastic IP allocation IDs, one per public subnet, for the NLB static IPs"
   type        = list(string)
 }
 
@@ -54,14 +59,8 @@ variable "cockroachdb_url" {
   sensitive   = true
 }
 
-variable "certificate_arn" {
-  description = "ACM certificate ARN for the api.<domain> listener. Empty disables HTTPS."
-  type        = string
-  default     = ""
-}
-
 variable "api_domain" {
-  description = "Public API domain, e.g. api.draftly.example.com. Empty disables the Route53 record."
+  description = "Public API domain served by Caddy (Let's Encrypt via HTTP-01), e.g. draftly.dpdns.org"
   type        = string
   default     = ""
 }
@@ -145,6 +144,41 @@ resource "aws_ecs_task_definition" "draftly" {
           "awslogs-stream-prefix" = "ecs"
         }
       }
+    },
+    {
+      name      = "caddy"
+      image     = "caddy:2"
+      essential = true
+      command   = ["caddy", "reverse-proxy", "--from", var.api_domain, "--to", "127.0.0.1:8000"]
+
+      portMappings = [
+        {
+          containerPort = 80
+          hostPort      = 80
+          protocol      = "tcp"
+        },
+        {
+          containerPort = 443
+          hostPort      = 443
+          protocol      = "tcp"
+        }
+      ]
+
+      dependsOn = [
+        {
+          containerName = var.project_name
+          condition     = "START"
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = "/ecs/${var.project_name}-${var.environment}"
+          "awslogs-region"        = data.aws_region.current.name
+          "awslogs-stream-prefix" = "caddy"
+        }
+      }
     }
   ])
 
@@ -168,12 +202,21 @@ resource "aws_ecs_service" "draftly" {
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.draftly.arn
-    container_name   = var.project_name
-    container_port   = var.container_port
+    target_group_arn = aws_lb_target_group.draftly_http.arn
+    container_name   = "caddy"
+    container_port   = 80
   }
 
-  depends_on = [aws_lb_listener.draftly_http]
+  load_balancer {
+    target_group_arn = aws_lb_target_group.draftly_https.arn
+    container_name   = "caddy"
+    container_port   = 443
+  }
+
+  depends_on = [
+    aws_lb_listener.draftly_http,
+    aws_lb_listener.draftly_https,
+  ]
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-service"
@@ -184,123 +227,6 @@ resource "aws_ecs_service" "draftly" {
 resource "aws_security_group" "ecs_service" {
   name        = "${var.project_name}-${var.environment}-ecs-sg"
   description = "Security group for ECS service"
-  vpc_id      = var.vpc_id
-
-  ingress {
-    from_port       = var.container_port
-    to_port         = var.container_port
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-ecs-sg"
-    Environment = var.environment
-  }
-}
-
-resource "aws_lb" "draftly" {
-  name               = "${var.project_name}-${var.environment}-alb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = var.public_subnet_ids
-
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-alb"
-    Environment = var.environment
-  }
-}
-
-resource "aws_lb_target_group" "draftly" {
-  name        = "${var.project_name}-${var.environment}-tg"
-  port        = var.container_port
-  protocol    = "HTTP"
-  vpc_id      = var.vpc_id
-  target_type = "ip"
-
-  health_check {
-    path                = "/api/health"
-    healthy_threshold   = 2
-    unhealthy_threshold = 3
-    timeout             = 5
-    interval            = 30
-    matcher             = "200"
-  }
-
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-tg"
-    Environment = var.environment
-  }
-}
-
-resource "aws_lb_listener" "draftly_http" {
-  count             = var.certificate_arn == "" ? 1 : 0
-  load_balancer_arn = aws_lb.draftly.arn
-  port              = "80"
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.draftly.arn
-  }
-
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-http-listener"
-    Environment = var.environment
-  }
-}
-
-resource "aws_lb_listener" "draftly_http_redirect" {
-  count             = var.certificate_arn != "" ? 1 : 0
-  load_balancer_arn = aws_lb.draftly.arn
-  port              = "80"
-  protocol          = "HTTP"
-
-  default_action {
-    type = "redirect"
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
-    }
-  }
-
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-http-redirect"
-    Environment = var.environment
-  }
-}
-
-resource "aws_lb_listener" "draftly_https" {
-  count             = var.certificate_arn != "" ? 1 : 0
-  load_balancer_arn = aws_lb.draftly.arn
-  port              = "443"
-  protocol          = "HTTPS"
-  certificate_arn   = var.certificate_arn
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.draftly.arn
-  }
-
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-https-listener"
-    Environment = var.environment
-  }
-}
-
-resource "aws_security_group" "alb" {
-  name        = "${var.project_name}-${var.environment}-alb-sg"
-  description = "Security group for ALB"
   vpc_id      = var.vpc_id
 
   ingress {
@@ -325,7 +251,98 @@ resource "aws_security_group" "alb" {
   }
 
   tags = {
-    Name        = "${var.project_name}-${var.environment}-alb-sg"
+    Name        = "${var.project_name}-${var.environment}-ecs-sg"
+    Environment = var.environment
+  }
+}
+
+resource "aws_lb" "draftly" {
+  name               = "${var.project_name}-${var.environment}-nlb"
+  internal           = false
+  load_balancer_type = "network"
+
+  dynamic "subnet_mapping" {
+    for_each = zipmap(var.public_subnet_ids, var.eip_allocation_ids)
+    content {
+      subnet_id     = subnet_mapping.key
+      allocation_id = subnet_mapping.value
+    }
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-nlb"
+    Environment = var.environment
+  }
+}
+
+resource "aws_lb_target_group" "draftly_http" {
+  name        = "${var.project_name}-${var.environment}-tg-http"
+  port        = 80
+  protocol    = "TCP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
+
+  health_check {
+    protocol            = "TCP"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    interval            = 30
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-tg-http"
+    Environment = var.environment
+  }
+}
+
+resource "aws_lb_target_group" "draftly_https" {
+  name        = "${var.project_name}-${var.environment}-tg-https"
+  port        = 443
+  protocol    = "TCP"
+  vpc_id      = var.vpc_id
+  target_type = "ip"
+
+  health_check {
+    protocol            = "TCP"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    interval            = 30
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-tg-https"
+    Environment = var.environment
+  }
+}
+
+resource "aws_lb_listener" "draftly_http" {
+  load_balancer_arn = aws_lb.draftly.arn
+  port              = "80"
+  protocol          = "TCP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.draftly_http.arn
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-http-listener"
+    Environment = var.environment
+  }
+}
+
+resource "aws_lb_listener" "draftly_https" {
+  load_balancer_arn = aws_lb.draftly.arn
+  port              = "443"
+  protocol          = "TCP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.draftly_https.arn
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-https-listener"
     Environment = var.environment
   }
 }

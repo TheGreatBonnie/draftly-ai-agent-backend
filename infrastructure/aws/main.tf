@@ -29,16 +29,10 @@ variable "cockroachdb_url" {
   sensitive   = true
 }
 
-variable "certificate_arn" {
-  description = "ACM certificate ARN for api.<domain>. Empty disables HTTPS."
-  type        = string
-  default     = ""
-}
-
 variable "api_domain" {
-  description = "Public API domain, e.g. api.draftly.example.com. Empty disables the Route53 record."
+  description = "Public API domain served by Caddy (Let's Encrypt via HTTP-01)"
   type        = string
-  default     = ""
+  default     = "draftly.dpdns.org"
 }
 
 terraform {
@@ -61,6 +55,16 @@ module "ecr" {
   source = "./ecr-repository"
 }
 
+resource "aws_eip" "alb" {
+  count  = length(module.vpc.public_subnet_ids)
+  domain = "vpc"
+
+  tags = {
+    Name        = "draftly-${var.environment}-nlb-eip-${count.index}"
+    Environment = var.environment
+  }
+}
+
 module "ecs" {
   source = "./ecs-service"
 
@@ -68,9 +72,9 @@ module "ecs" {
   vpc_id             = module.vpc.vpc_id
   public_subnet_ids  = module.vpc.public_subnet_ids
   subnet_ids         = module.vpc.private_subnet_ids
+  eip_allocation_ids = aws_eip.alb[*].id
   ecr_repository_url = module.ecr.ecr_repository_url
   cockroachdb_url    = var.cockroachdb_url
-  certificate_arn    = var.certificate_arn
   api_domain         = var.api_domain
 }
 
@@ -95,19 +99,7 @@ output "nat_eip" {
   value       = module.vpc.nat_eip
 }
 
-data "aws_route53_zone" "api" {
-  count = var.api_domain != "" ? 1 : 0
-  name  = var.api_domain
-}
-
-resource "aws_route53_record" "api" {
-  count   = var.api_domain != "" ? 1 : 0
-  zone_id = data.aws_route53_zone.api[0].zone_id
-  name    = "api.${var.api_domain}"
-  type    = "A"
-  alias {
-    name                   = module.ecs.alb_dns_name
-    zone_id                = module.ecs.alb_zone_id
-    evaluate_target_health = true
-  }
+output "alb_eip_ips" {
+  description = "Public EIPs for the NLB; point the domain's A record at these"
+  value       = aws_eip.alb[*].public_ip
 }
