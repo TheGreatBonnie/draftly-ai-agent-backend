@@ -7,6 +7,8 @@ module "staging" {
   subnet_ids         = var.subnet_ids
   ecr_repository_url = module.ecr.ecr_repository_url
   cockroachdb_url    = var.cockroachdb_url_staging
+  certificate_arn    = var.certificate_arn
+  api_domain         = var.api_domain
   desired_count      = 1
   cpu                = 256
   memory             = 512

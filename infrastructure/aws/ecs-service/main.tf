@@ -49,6 +49,16 @@ variable "cockroachdb_url" {
   sensitive   = true
 }
 
+variable "certificate_arn" {
+  description = "ACM certificate ARN for the api.<domain> listener"
+  type        = string
+}
+
+variable "api_domain" {
+  description = "Public API domain, e.g. api.draftly.example.com"
+  type        = string
+}
+
 resource "aws_ecs_cluster" "draftly" {
   name = "${var.project_name}-${var.environment}-cluster"
 
@@ -120,7 +130,7 @@ resource "aws_ecs_service" "draftly" {
   network_configuration {
     subnets          = var.subnet_ids
     security_groups  = [aws_security_group.ecs_service.id]
-    assign_public_ip = true
+    assign_public_ip = false
   }
 
   load_balancer {
@@ -129,7 +139,7 @@ resource "aws_ecs_service" "draftly" {
     container_port   = var.container_port
   }
 
-  depends_on = [aws_lb_listener.draftly]
+  depends_on = [aws_lb_listener.draftly_https]
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-service"
@@ -183,7 +193,7 @@ resource "aws_lb_target_group" "draftly" {
   target_type = "ip"
 
   health_check {
-    path                = "/api/reviews"
+    path                = "/api/health"
     healthy_threshold   = 2
     unhealthy_threshold = 3
     timeout             = 5
@@ -197,10 +207,32 @@ resource "aws_lb_target_group" "draftly" {
   }
 }
 
-resource "aws_lb_listener" "draftly" {
+resource "aws_lb_listener" "draftly_http" {
   load_balancer_arn = aws_lb.draftly.arn
   port              = "80"
   protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-http-listener"
+    Environment = var.environment
+  }
+}
+
+resource "aws_lb_listener" "draftly_https" {
+  load_balancer_arn = aws_lb.draftly.arn
+  port              = "443"
+  protocol          = "HTTPS"
+  certificate_arn   = var.certificate_arn
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
 
   default_action {
     type             = "forward"
@@ -208,7 +240,7 @@ resource "aws_lb_listener" "draftly" {
   }
 
   tags = {
-    Name        = "${var.project_name}-${var.environment}-listener"
+    Name        = "${var.project_name}-${var.environment}-https-listener"
     Environment = var.environment
   }
 }
@@ -221,6 +253,13 @@ resource "aws_security_group" "alb" {
   ingress {
     from_port   = 80
     to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -309,4 +348,8 @@ output "ecs_service_name" {
 
 output "alb_dns_name" {
   value = aws_lb.draftly.dns_name
+}
+
+output "alb_zone_id" {
+  value = aws_lb.draftly.zone_id
 }
