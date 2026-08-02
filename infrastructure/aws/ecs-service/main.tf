@@ -14,7 +14,12 @@ variable "vpc_id" {
 }
 
 variable "subnet_ids" {
-  description = "Subnet IDs for the ECS service"
+  description = "Private subnet IDs for the ECS service tasks"
+  type        = list(string)
+}
+
+variable "public_subnet_ids" {
+  description = "Public subnet IDs for the ALB"
   type        = list(string)
 }
 
@@ -50,13 +55,15 @@ variable "cockroachdb_url" {
 }
 
 variable "certificate_arn" {
-  description = "ACM certificate ARN for the api.<domain> listener"
+  description = "ACM certificate ARN for the api.<domain> listener. Empty disables HTTPS."
   type        = string
+  default     = ""
 }
 
 variable "api_domain" {
-  description = "Public API domain, e.g. api.draftly.example.com"
+  description = "Public API domain, e.g. api.draftly.example.com. Empty disables the Route53 record."
   type        = string
+  default     = ""
 }
 
 data "aws_secretsmanager_secret" "draftly_env" {
@@ -166,7 +173,7 @@ resource "aws_ecs_service" "draftly" {
     container_port   = var.container_port
   }
 
-  depends_on = [aws_lb_listener.draftly_https]
+  depends_on = [aws_lb_listener.draftly_http]
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-service"
@@ -180,10 +187,10 @@ resource "aws_security_group" "ecs_service" {
   vpc_id      = var.vpc_id
 
   ingress {
-    from_port   = var.container_port
-    to_port     = var.container_port
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port       = var.container_port
+    to_port         = var.container_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
   }
 
   egress {
@@ -204,7 +211,7 @@ resource "aws_lb" "draftly" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
-  subnets            = var.subnet_ids
+  subnets            = var.public_subnet_ids
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-alb"
@@ -235,6 +242,24 @@ resource "aws_lb_target_group" "draftly" {
 }
 
 resource "aws_lb_listener" "draftly_http" {
+  count             = var.certificate_arn == "" ? 1 : 0
+  load_balancer_arn = aws_lb.draftly.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.draftly.arn
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-http-listener"
+    Environment = var.environment
+  }
+}
+
+resource "aws_lb_listener" "draftly_http_redirect" {
+  count             = var.certificate_arn != "" ? 1 : 0
   load_balancer_arn = aws_lb.draftly.arn
   port              = "80"
   protocol          = "HTTP"
@@ -249,12 +274,13 @@ resource "aws_lb_listener" "draftly_http" {
   }
 
   tags = {
-    Name        = "${var.project_name}-${var.environment}-http-listener"
+    Name        = "${var.project_name}-${var.environment}-http-redirect"
     Environment = var.environment
   }
 }
 
 resource "aws_lb_listener" "draftly_https" {
+  count             = var.certificate_arn != "" ? 1 : 0
   load_balancer_arn = aws_lb.draftly.arn
   port              = "443"
   protocol          = "HTTPS"

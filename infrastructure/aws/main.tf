@@ -23,16 +23,6 @@ variable "environment" {
   default     = "production"
 }
 
-variable "vpc_id" {
-  description = "VPC ID"
-  type        = string
-}
-
-variable "subnet_ids" {
-  description = "Subnet IDs"
-  type        = list(string)
-}
-
 variable "cockroachdb_url" {
   description = "CockroachDB connection URL"
   type        = string
@@ -40,28 +30,31 @@ variable "cockroachdb_url" {
 }
 
 variable "certificate_arn" {
-  description = "ACM certificate ARN for api.<domain>"
+  description = "ACM certificate ARN for api.<domain>. Empty disables HTTPS."
   type        = string
+  default     = ""
 }
 
 variable "api_domain" {
-  description = "Public API domain, e.g. api.draftly.example.com"
+  description = "Public API domain, e.g. api.draftly.example.com. Empty disables the Route53 record."
   type        = string
-}
-
-variable "backend_key" {
-  description = "Terraform state key"
-  default     = "prod/terraform.tfstate"
+  default     = ""
 }
 
 terraform {
   backend "s3" {
     bucket         = "draftly-terraform-state"
-    key            = var.backend_key
+    key            = "production/terraform.tfstate"
     region         = "us-east-1"
     dynamodb_table = "terraform-locks"
     encrypt        = true
   }
+}
+
+module "vpc" {
+  source = "./vpc"
+
+  environment = var.environment
 }
 
 module "ecr" {
@@ -72,8 +65,9 @@ module "ecs" {
   source = "./ecs-service"
 
   environment        = var.environment
-  vpc_id             = var.vpc_id
-  subnet_ids         = var.subnet_ids
+  vpc_id             = module.vpc.vpc_id
+  public_subnet_ids  = module.vpc.public_subnet_ids
+  subnet_ids         = module.vpc.private_subnet_ids
   ecr_repository_url = module.ecr.ecr_repository_url
   cockroachdb_url    = var.cockroachdb_url
   certificate_arn    = var.certificate_arn
@@ -96,12 +90,19 @@ output "ecr_repository_url" {
   value = module.ecr.ecr_repository_url
 }
 
+output "nat_eip" {
+  description = "Public EIP used by the NAT gateway; allowlist this in CockroachDB Cloud"
+  value       = module.vpc.nat_eip
+}
+
 data "aws_route53_zone" "api" {
-  name = var.api_domain
+  count = var.api_domain != "" ? 1 : 0
+  name  = var.api_domain
 }
 
 resource "aws_route53_record" "api" {
-  zone_id = data.aws_route53_zone.api.zone_id
+  count   = var.api_domain != "" ? 1 : 0
+  zone_id = data.aws_route53_zone.api[0].zone_id
   name    = "api.${var.api_domain}"
   type    = "A"
   alias {
