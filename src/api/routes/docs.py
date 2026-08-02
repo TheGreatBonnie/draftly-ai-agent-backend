@@ -7,7 +7,7 @@ from src.api.auth import get_verified_token
 router = APIRouter()
 
 
-@router.get("/")
+@router.get("")
 async def list_docs(token: dict = Depends(get_verified_token)) -> list[dict]:
     from src.database import fetch_all
 
