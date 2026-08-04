@@ -72,6 +72,7 @@ class NodeTrace:
     input_state: dict | None = None
     output_state: dict | None = None
     error: str | None = None
+    token_usage: int = 0
 
 
 @dataclass

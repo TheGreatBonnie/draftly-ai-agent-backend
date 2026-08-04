@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import re
 from collections.abc import AsyncIterator
 from typing import Any, TypedDict
@@ -20,6 +21,25 @@ from pydantic import BaseModel
 from src.config import settings
 
 logger = structlog.get_logger()
+
+_token_usage: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "llm_token_usage", default=0
+)
+
+
+def reset_token_usage() -> None:
+    _token_usage.set(0)
+
+
+def get_token_usage() -> int:
+    return _token_usage.get()
+
+
+def _record_usage(response: Any) -> None:
+    usage = getattr(response, "usage_metadata", None)
+    if usage:
+        _token_usage.set(_token_usage.get() + int(usage.get("total_tokens", 0) or 0))
+
 
 _llm_cache: dict[str, ChatOpenAI] = {}
 _nvidia_cache: dict[str, ChatNVIDIA] = {}
@@ -117,6 +137,7 @@ async def call_llm(
     response = await asyncio.wait_for(
         llm.ainvoke(messages), timeout=settings.llm_timeout
     )
+    _record_usage(response)
 
     reasoning = _extract_reasoning(response)
     if reasoning:
@@ -141,9 +162,8 @@ async def call_llm_structured(
     """Call an LLM with structured output. Never raises.
 
     Returns ``(parsed_model, error)`` where ``error`` is ``""`` on success.
-    Attempts the provider ``json_schema`` then ``function_calling`` methods.
-    Providers that reject ``json_schema`` at bind time fall back to
-    ``function_calling``.
+    Uses ``include_raw=True`` so token usage from the raw AIMessage is
+    recorded into the ``_token_usage`` contextvar.
     """
     messages: list[BaseMessage] = []
     if system_prompt:
@@ -155,8 +175,10 @@ async def call_llm_structured(
             llm = get_llm(
                 model, temperature=temperature, max_tokens=max_tokens, provider=provider
             )
-            structured_llm = llm.with_structured_output(schema, method=method)
-            response = await asyncio.wait_for(
+            structured_llm = llm.with_structured_output(
+                schema, method=method, include_raw=True
+            )
+            raw_result = await asyncio.wait_for(
                 structured_llm.ainvoke(messages), timeout=settings.llm_timeout
             )
         except Exception as e:
@@ -167,8 +189,9 @@ async def call_llm_structured(
                 error=str(e),
             )
             continue
-        if isinstance(response, schema):
-            return response, ""
+        if isinstance(raw_result, dict) and isinstance(raw_result.get("parsed"), schema):
+            _record_usage(raw_result.get("raw"))
+            return raw_result["parsed"], ""
     return None, "structured_output_failed"
 
 

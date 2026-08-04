@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
@@ -199,7 +201,7 @@ class _FakeStructuredLLM:
         self._verdict = verdict
         self.calls: list[str] = []
 
-    def with_structured_output(self, schema, method=None):
+    def with_structured_output(self, schema, method=None, include_raw=False):
         self.calls.append(method or "default")
         if self._verdict is None:
             raise ValueError(f"method {method} not supported")
@@ -211,7 +213,7 @@ class _FakeStructuredRunnable:
         self._verdict = verdict
 
     async def ainvoke(self, messages):
-        return self._verdict
+        return {"raw": None, "parsed": self._verdict, "parsing_error": None}
 
 
 @pytest.mark.asyncio
@@ -231,7 +233,7 @@ async def test_call_llm_structured_returns_parsed_model(monkeypatch):
 @pytest.mark.asyncio
 async def test_call_llm_structured_falls_back_to_function_calling(monkeypatch):
     class _FallbackLLM:
-        def with_structured_output(self, schema, method=None):
+        def with_structured_output(self, schema, method=None, include_raw=False):
             if method == "json_schema":
                 raise ValueError("not supported")
             return _FakeStructuredRunnable(_FakeVerdict(explanation="e", result="needs_revision"))
@@ -246,7 +248,7 @@ async def test_call_llm_structured_falls_back_to_function_calling(monkeypatch):
 @pytest.mark.asyncio
 async def test_call_llm_structured_never_raises(monkeypatch):
     class _AlwaysFailLLM:
-        def with_structured_output(self, schema, method=None):
+        def with_structured_output(self, schema, method=None, include_raw=False):
             raise ValueError("nope")
 
     monkeypatch.setattr("src.integrations.llm.get_llm", lambda *a, **kw: _AlwaysFailLLM())
@@ -264,3 +266,59 @@ async def test_call_llm_structured_absorbs_get_llm_failure(monkeypatch):
     result, error = await call_llm_structured(prompt="q", schema=_FakeVerdict)
     assert result is None
     assert error == "structured_output_failed"
+
+
+@pytest.mark.asyncio
+async def test_call_llm_records_token_usage_in_contextvar():
+    from src.integrations import llm as llm_module
+
+    class _Msg:
+        content = "hi"
+        usage_metadata = {"total_tokens": 42}
+
+    mock_llm = AsyncMock()
+    mock_llm.ainvoke.return_value = _Msg()
+
+    llm_module.reset_token_usage()
+    with patch.object(llm_module, "get_llm", return_value=mock_llm):
+        text = await llm_module.call_llm("prompt")
+
+    assert text == "hi"
+    assert llm_module.get_token_usage() == 42
+
+
+@pytest.mark.asyncio
+async def test_reset_token_usage_zeroes_counter():
+    from src.integrations import llm as llm_module
+
+    llm_module._token_usage.set(100)
+    llm_module.reset_token_usage()
+    assert llm_module.get_token_usage() == 0
+
+
+@pytest.mark.asyncio
+async def test_call_llm_structured_records_token_usage_in_contextvar():
+    from src.integrations import llm as llm_module
+
+    class _Msg:
+        content = "hi"
+        usage_metadata = {"total_tokens": 42}
+
+    class _Schema(BaseModel):
+        pass
+
+    mock_llm = AsyncMock()
+    mock_llm.with_structured_output = Mock(return_value=mock_llm)
+    mock_llm.ainvoke.return_value = {
+        "raw": _Msg(),
+        "parsed": _Schema(),
+        "parsing_error": None,
+    }
+
+    llm_module.reset_token_usage()
+    with patch.object(llm_module, "get_llm", return_value=mock_llm):
+        parsed, err = await llm_module.call_llm_structured("prompt", _Schema)
+
+    assert parsed is not None
+    assert err == ""
+    assert llm_module.get_token_usage() == 42
