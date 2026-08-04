@@ -87,3 +87,46 @@ async def test_publish_skips_embedding_when_transaction_fails():
             await publish_node(state)
 
     mock_chunks.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_publish_skips_embeddings_when_write_fails_mid_transaction():
+    from src.agents.nodes.publish import publish_node
+
+    mock_conn = MagicMock()
+
+    class FakeTx:
+        async def __aenter__(self):
+            return mock_conn
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+    def fake_transaction():
+        return FakeTx()
+
+    state = {
+        "org_id": "org-1",
+        "doc_id": "doc-1",
+        "draft_title": "T",
+        "draft_content": "c",
+        "doc_type": "howto",
+        "confidence_score": 0.5,
+        "source": "cli",
+        "source_metadata": {},
+    }
+
+    with patch(
+        "src.agents.nodes.publish.transaction", side_effect=fake_transaction
+    ), patch(
+        "src.agents.nodes.publish.execute_conn", new_callable=AsyncMock
+    ) as mock_exec, patch(
+        "src.agents.nodes.publish.store_document_chunks", new_callable=AsyncMock
+    ) as mock_chunks, patch(
+        "src.agents.nodes.publish.store_memory", new_callable=AsyncMock
+    ), patch("src.agents.nodes.publish.store_audit_log", new_callable=AsyncMock):
+        mock_exec.side_effect = RuntimeError("write failed")
+        with pytest.raises(RuntimeError):
+            await publish_node(state)
+
+    mock_chunks.assert_not_awaited()
