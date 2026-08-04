@@ -371,3 +371,46 @@ def test_node_trace_token_usage_survives_payload_roundtrip():
     payload = json.loads(traces._trace_to_payload(trace))
     restored = traces._dict_to_trace(payload)
     assert restored.node_traces[0].token_usage == 42
+
+
+@pytest.mark.asyncio
+async def test_store_traces_writes_per_node_rows():
+    from src.analytics import traces as traces_module
+
+    node1 = traces_module.NodeTrace(
+        node_name="research", duration_ms=10.0, token_usage=5, error=None
+    )
+    node2 = traces_module.NodeTrace(
+        node_name="write_docs", duration_ms=20.0, token_usage=9, error=None
+    )
+    trace = traces_module.AgentTrace(
+        trace_id="t1",
+        org_id="o1",
+        workflow_id="w1",
+        question="q",
+        question_type="s",
+        source="cli",
+        node_traces=[node1, node2],
+    )
+
+    with patch(
+        "src.analytics.traces.execute", new_callable=AsyncMock
+    ) as mock_exec:
+        await traces_module._store_traces([trace])
+
+    sqls = [c.args[0] for c in mock_exec.call_args_list]
+    node_sqls = [s for s in sqls if "agent_trace_nodes" in s]
+    assert len(node_sqls) == 2
+    assert "node_name" in node_sqls[0]
+    params = mock_exec.call_args_list[1].args
+    assert "research" in params
+    assert 5 in params
+
+
+def test_sanitize_state_truncates_long_values():
+    from src.analytics.traces import _sanitize_state
+
+    state = {"long_field": "x" * 5000, "key": "short"}
+    out = _sanitize_state(state)
+    assert out["key"] == json.dumps("short")
+    assert len(out["long_field"]) <= 2000

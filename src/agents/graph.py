@@ -15,7 +15,7 @@ from src.agents.nodes.reflect import reflect_node
 from src.agents.nodes.synthesize import synthesize_node
 from src.agents.nodes.write import write_docs_node
 from src.agents.state import DocumentationState
-from src.analytics.traces import AgentTrace, NodeTrace, TraceCollector
+from src.analytics.traces import AgentTrace, NodeTrace, TraceCollector, _sanitize_state
 from src.integrations.llm import get_token_usage, reset_token_usage
 from src.memory.episodes import store_episode
 
@@ -84,6 +84,7 @@ def _wrap_node_with_tracing(
     async def traced_node(state: DocumentationState) -> dict:
         start_time = datetime.utcnow()
         error = None
+        result: dict = {}
         reset_token_usage()
         try:
             result = await node_fn(state)
@@ -101,6 +102,9 @@ def _wrap_node_with_tracing(
                 duration_ms=duration_ms,
                 error=error,
                 token_usage=get_token_usage(),
+                succeeded=error is None,
+                input_state=_sanitize_state(state),
+                output_state=_sanitize_state(result) if error is None else None,
             )
             if "_node_traces" not in state:
                 state["_node_traces"] = []

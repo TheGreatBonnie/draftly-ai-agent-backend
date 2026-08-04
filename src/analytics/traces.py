@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
@@ -73,6 +73,22 @@ class NodeTrace:
     output_state: dict | None = None
     error: str | None = None
     token_usage: int = 0
+    succeeded: bool = True
+
+
+def _sanitize_state(state: Mapping[str, Any] | None) -> dict:
+    """Keep traces compact + PII-safe: drop raw content, cap value length."""
+    if not state:
+        return {}
+    max_len = 2000
+    drop_keys = {"draft_content", "knowledge_package", "message_history", "subagent_results"}
+    out: dict[str, Any] = {}
+    for k, v in state.items():
+        if k in drop_keys:
+            continue
+        text = json.dumps(v, default=str)
+        out[k] = text[:max_len]
+    return out
 
 
 @dataclass
@@ -159,9 +175,12 @@ def _trace_to_payload(trace: AgentTrace) -> str:
             "node_traces": [
                 {
                     "node_name": nt.node_name,
+                    "start_time": nt.start_time,
+                    "end_time": nt.end_time,
                     "duration_ms": nt.duration_ms,
-                    "error": nt.error,
                     "token_usage": nt.token_usage,
+                    "succeeded": nt.succeeded,
+                    "error": nt.error,
                 }
                 for nt in trace.node_traces
             ],
@@ -191,6 +210,29 @@ async def _store_traces(traces: list[AgentTrace]) -> None:
             _trace_to_payload(trace),
             trace.timestamp,
         )
+        for nt in trace.node_traces:
+            await execute(
+                """
+                INSERT INTO agent_trace_nodes (
+                    org_id, trace_id, workflow_id, node_name,
+                    start_time, end_time, duration_ms, token_usage,
+                    input_state, output_state, error, succeeded
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12)
+                """,
+                trace.org_id,
+                trace.trace_id,
+                trace.workflow_id,
+                nt.node_name,
+                nt.start_time,
+                nt.end_time,
+                nt.duration_ms,
+                nt.token_usage,
+                json.dumps(nt.input_state or {}),
+                json.dumps(nt.output_state or {}),
+                nt.error,
+                nt.succeeded,
+            )
 
 
 def _dict_to_trace(data: dict) -> AgentTrace:
