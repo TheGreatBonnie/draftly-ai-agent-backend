@@ -5,7 +5,7 @@ from typing import Any
 import structlog
 
 from src.agents.state import DocumentationState
-from src.database import execute
+from src.database import execute_conn, transaction
 from src.memory.chunking import store_document_chunks
 from src.memory.organizational import store_audit_log, store_memory
 
@@ -208,70 +208,76 @@ async def publish_node(state: DocumentationState) -> dict:
 
     logger.info("publish_started", org_id=org_id, doc_id=doc_id)
 
-    # 1. Update documentation status
-    await execute(
-        "UPDATE documentation SET status = 'approved', updated_at = now() WHERE id = $1",
-        doc_id,
-    )
+    async with transaction() as conn:
+        # 1. Update documentation status
+        await execute_conn(
+            conn,
+            "UPDATE documentation SET status = 'approved', updated_at = now() WHERE id = $1",
+            doc_id,
+        )
 
-    # 2. Store chunked embeddings for future semantic search
+        # 3. Store in organizational memory
+        await store_memory(
+            org_id=org_id,
+            memory_type="organizational",
+            key=title,
+            value={
+                "doc_id": doc_id,
+                "content": content[:1000],
+                "doc_type": state.get("doc_type"),
+                "confidence": state.get("confidence_score"),
+            },
+            source="documentation_generation",
+            confidence=state.get("confidence_score", 0.5),
+            conn=conn,
+        )
+
+        # 4. Store reviewer feedback if present
+        if state.get("human_feedback"):
+            await store_memory(
+                org_id=org_id,
+                memory_type="reviewer",
+                key=f"review_{doc_id}",
+                value={
+                    "feedback": state["human_feedback"],
+                    "decision": state.get("human_decision"),
+                    "doc_title": title,
+                },
+                source="human_review",
+                confidence=1.0,
+                conn=conn,
+            )
+
+        # 5. Mark support thread as resolved
+        await execute_conn(
+            conn,
+            """
+            UPDATE support_threads
+            SET status = 'resolved', resolution = $1, resolved_at = now()
+            WHERE id = $2
+            """,
+            content[:2000],
+            state.get("support_thread_id"),
+        )
+
+        # 6. Audit log
+        await store_audit_log(
+            org_id=org_id,
+            actor="agent",
+            action="publish_documentation",
+            resource_type="documentation",
+            resource_id=doc_id,
+            details={"title": title, "confidence": state.get("confidence_score")},
+            conn=conn,
+        )
+
+    # 2. Store chunked embeddings AFTER commit (search index, rebuildable)
     await store_document_chunks(
         org_id=org_id,
         content_id=doc_id,
         title=title,
         content=content,
         metadata={"doc_type": state.get("doc_type"), "confidence": state.get("confidence_score")},
-    )
-
-    # 3. Store in organizational memory
-    await store_memory(
-        org_id=org_id,
-        memory_type="organizational",
-        key=title,
-        value={
-            "doc_id": doc_id,
-            "content": content[:1000],
-            "doc_type": state.get("doc_type"),
-            "confidence": state.get("confidence_score"),
-        },
-        source="documentation_generation",
-        confidence=state.get("confidence_score", 0.5),
-    )
-
-    # 4. Store reviewer feedback if present
-    if state.get("human_feedback"):
-        await store_memory(
-            org_id=org_id,
-            memory_type="reviewer",
-            key=f"review_{doc_id}",
-            value={
-                "feedback": state["human_feedback"],
-                "decision": state.get("human_decision"),
-                "doc_title": title,
-            },
-            source="human_review",
-            confidence=1.0,
-        )
-
-    # 5. Mark support thread as resolved
-    await execute(
-        """
-        UPDATE support_threads
-        SET status = 'resolved', resolution = $1, resolved_at = now()
-        WHERE id = $2
-        """,
-        content[:2000],
-        state.get("support_thread_id"),
-    )
-
-    # 6. Audit log
-    await store_audit_log(
-        org_id=org_id,
-        actor="agent",
-        action="publish_documentation",
-        resource_type="documentation",
-        resource_id=doc_id,
-        details={"title": title, "confidence": state.get("confidence_score")},
     )
 
     # 7. Reply to original source

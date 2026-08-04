@@ -85,7 +85,22 @@ async def test_publish_node_stores_chunks():
         "src.agents.nodes.publish.store_document_chunks",
         new_callable=AsyncMock,
     )
-    with patch("src.agents.nodes.publish.execute", new_callable=AsyncMock), \
+
+    def fake_transaction():
+        class FakeTx:
+            async def __aenter__(self):
+                return MagicMock()
+
+            async def __aexit__(self, exc_type, exc, tb):
+                pass
+
+        return FakeTx()
+
+    with patch(
+        "src.agents.nodes.publish.transaction", side_effect=fake_transaction
+    ), patch(
+        "src.agents.nodes.publish.execute_conn", new_callable=AsyncMock
+    ), \
          chunks_patch as mock_chunks, \
          patch("src.agents.nodes.publish.store_memory", new_callable=AsyncMock), \
          patch("src.agents.nodes.publish.store_audit_log", new_callable=AsyncMock):
