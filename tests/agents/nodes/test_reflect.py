@@ -93,3 +93,64 @@ async def test_reflect_is_idempotent():
 
     assert result["_reflected"] is True
     mock_llm.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reflect_falls_back_when_llm_returns_none():
+    from src.agents.nodes.reflect import reflect_node
+
+    state = {
+        "org_id": "org-1",
+        "episode_id": "ep-1",
+        "question": "how to deploy",
+        "confidence_score": 0.9,
+        "published_urls": [{"platform": "draftly"}],
+        "human_feedback": "",
+    }
+
+    with patch(
+        "src.agents.nodes.reflect.call_llm_structured",
+        new_callable=AsyncMock,
+        return_value=(None, "structured_output_failed"),
+    ), patch(
+        "src.agents.nodes.reflect.store_reflection",
+        new_callable=AsyncMock,
+        return_value="ref-1",
+    ) as mock_ref, patch(
+        "src.agents.nodes.reflect.link_episode_reflection", new_callable=AsyncMock
+    ) as mock_link:
+        result = await reflect_node(state)
+
+    assert result["_reflected"] is True
+    assert result["reflection_id"] == "ref-1"
+    mock_ref.assert_awaited_once_with("org-1", "ep-1", "No lesson captured", 0.5, [])
+    mock_link.assert_awaited_once_with("org-1", "ep-1", "ref-1")
+
+
+@pytest.mark.asyncio
+async def test_reflect_swallows_db_failure():
+    from src.agents.nodes.reflect import reflect_node
+
+    state = {
+        "org_id": "org-1",
+        "episode_id": "ep-1",
+        "question": "how to deploy",
+        "confidence_score": 0.9,
+        "published_urls": [{"platform": "draftly"}],
+        "human_feedback": "",
+    }
+
+    parsed = type("R", (), {"lesson": "Deploy via CLI", "confidence": 0.8, "tags": ["deploy"]})()
+    with patch(
+        "src.agents.nodes.reflect.call_llm_structured",
+        new_callable=AsyncMock,
+        return_value=(parsed, ""),
+    ), patch(
+        "src.agents.nodes.reflect.store_reflection",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("db down"),
+    ):
+        result = await reflect_node(state)
+
+    assert result["_reflected"] is True
+    assert "reflection_id" not in result

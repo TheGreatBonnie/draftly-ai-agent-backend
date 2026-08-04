@@ -49,9 +49,13 @@ async def reflect_node(state: DocumentationState) -> dict:
         parsed = ReflectionOutput(lesson="No lesson captured", confidence=0.5, tags=[])
     parsed = cast(ReflectionOutput, parsed)
 
-    reflection_id = await store_reflection(
-        org_id, episode_id, parsed.lesson, parsed.confidence, parsed.tags
-    )
-    await link_episode_reflection(org_id, episode_id, reflection_id)
+    try:
+        reflection_id = await store_reflection(
+            org_id, episode_id, parsed.lesson, parsed.confidence, parsed.tags
+        )
+        await link_episode_reflection(org_id, episode_id, reflection_id)
+    except Exception as e:
+        logger.error("reflect_store_failed", error=str(e))
+        return {"_reflected": True}
 
     return {"_reflected": True, "reflection_id": reflection_id}
