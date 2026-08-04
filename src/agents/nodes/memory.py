@@ -8,7 +8,7 @@ from src.agents.state import DocumentationState
 from src.memory.episodic import search_threads
 from src.memory.organizational import search_memory
 from src.memory.reviewer import get_reviewer_memory
-from src.memory.vector_store import search_similar
+from src.memory.vector_store import hybrid_search
 
 logger = structlog.get_logger()
 
@@ -19,8 +19,8 @@ async def memory_retrieve_node(state: DocumentationState) -> dict:
 
     logger.info("memory_retrieve_started", org_id=org_id)
 
-    # 1. Semantic search via Distributed Vector Index
-    semantic_results = await search_similar(org_id, question, k=10)
+    # 1. Hybrid semantic search via Distributed Vector Index (SQL filter + rank + dedupe)
+    semantic_results = await hybrid_search(org_id, question, k=10)
 
     # 2. Episodic search — similar support threads
     sanitized = re.sub(r'[^\w\s]', ' ', question)
