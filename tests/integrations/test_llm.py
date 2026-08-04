@@ -322,3 +322,30 @@ async def test_call_llm_structured_records_token_usage_in_contextvar():
     assert parsed is not None
     assert err == ""
     assert llm_module.get_token_usage() == 42
+
+
+@pytest.mark.asyncio
+async def test_call_llm_structured_nvidia_skips_include_raw(monkeypatch):
+    class _NvidiaRunnable:
+        def __init__(self, verdict):
+            self._verdict = verdict
+
+        async def ainvoke(self, messages):
+            return self._verdict
+
+    class _NvidiaLLM:
+        def __init__(self):
+            self.include_raws: list[bool] = []
+
+        def with_structured_output(self, schema, method=None, include_raw=False):
+            self.include_raws.append(include_raw)
+            if include_raw:
+                raise NotImplementedError("include_raw=True is not implemented")
+            return _NvidiaRunnable(_FakeVerdict(explanation="e", result="satisfied"))
+
+    fake = _NvidiaLLM()
+    monkeypatch.setattr("src.integrations.llm.get_llm", lambda *a, **kw: fake)
+    result, error = await call_llm_structured(prompt="q", schema=_FakeVerdict, provider="nvidia")
+    assert isinstance(result, _FakeVerdict)
+    assert error == ""
+    assert all(r is False for r in fake.include_raws)

@@ -132,7 +132,7 @@ def build_hybrid_graph() -> StateGraph:
         graph.add_node(name, _wrap_node_with_tracing(name, fn))
 
     graph.add_node("collect_trace", collect_trace_node)
-    graph.add_node("reflect", reflect_node)
+    graph.add_node("reflect", _wrap_node_with_tracing("reflect", reflect_node))
 
     graph.set_entry_point("ingest")
     graph.add_edge("ingest", "memory_retrieve")

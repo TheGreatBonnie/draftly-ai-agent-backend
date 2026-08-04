@@ -1,3 +1,5 @@
+import json
+from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -348,3 +350,24 @@ async def test_collect_trace_node_episode_without_collector():
 
     assert result["episode_id"] == "ep-1"
     mock_ep.assert_awaited_once()
+
+
+def test_node_trace_token_usage_survives_payload_roundtrip():
+    from src.analytics import traces
+
+    trace = traces.AgentTrace(
+        trace_id="t1", org_id="org-1", workflow_id="w1",
+        question="q", question_type="how_to", source="cli",
+        nodes_executed=["ai_review"],
+        node_traces=[traces.NodeTrace(
+            node_name="ai_review",
+            start_time=datetime.utcnow(),
+            end_time=datetime.utcnow(),
+            duration_ms=100.0,
+            token_usage=42,
+        )],
+        total_duration_ms=100.0,
+    )
+    payload = json.loads(traces._trace_to_payload(trace))
+    restored = traces._dict_to_trace(payload)
+    assert restored.node_traces[0].token_usage == 42

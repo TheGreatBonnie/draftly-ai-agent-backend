@@ -148,6 +148,36 @@ class TraceCollector:
         return [_dict_to_trace(row["trace_data"]) for row in rows]
 
 
+def _trace_to_payload(trace: AgentTrace) -> str:
+    """Serialize a trace into its persisted JSON payload."""
+    return json.dumps(
+        {
+            "question": trace.question,
+            "question_type": trace.question_type,
+            "source": trace.source,
+            "nodes_executed": trace.nodes_executed,
+            "node_traces": [
+                {
+                    "node_name": nt.node_name,
+                    "duration_ms": nt.duration_ms,
+                    "error": nt.error,
+                    "token_usage": nt.token_usage,
+                }
+                for nt in trace.node_traces
+            ],
+            "total_duration_ms": trace.total_duration_ms,
+            "rubric_results": trace.rubric_results,
+            "verification_results": trace.verification_results,
+            "human_decisions": trace.human_decisions,
+            "final_confidence": trace.final_confidence,
+            "published": trace.published,
+            "publish_urls": trace.publish_urls,
+            "metadata": trace.metadata,
+        },
+        default=str,
+    )
+
+
 async def _store_traces(traces: list[AgentTrace]) -> None:
     for trace in traces:
         await execute(
@@ -158,28 +188,7 @@ async def _store_traces(traces: list[AgentTrace]) -> None:
             trace.trace_id,
             trace.org_id,
             trace.workflow_id,
-            json.dumps({
-                "question": trace.question,
-                "question_type": trace.question_type,
-                "source": trace.source,
-                "nodes_executed": trace.nodes_executed,
-                "node_traces": [
-                    {
-                        "node_name": nt.node_name,
-                        "duration_ms": nt.duration_ms,
-                        "error": nt.error,
-                    }
-                    for nt in trace.node_traces
-                ],
-                "total_duration_ms": trace.total_duration_ms,
-                "rubric_results": trace.rubric_results,
-                "verification_results": trace.verification_results,
-                "human_decisions": trace.human_decisions,
-                "final_confidence": trace.final_confidence,
-                "published": trace.published,
-                "publish_urls": trace.publish_urls,
-                "metadata": trace.metadata,
-            }, default=str),
+            _trace_to_payload(trace),
             trace.timestamp,
         )
 
@@ -192,6 +201,7 @@ def _dict_to_trace(data: dict) -> AgentTrace:
             end_time=datetime.utcnow(),
             duration_ms=nt.get("duration_ms", 0),
             error=nt.get("error"),
+            token_usage=nt.get("token_usage", 0),
         )
         for nt in data.get("node_traces", [])
     ]
