@@ -34,6 +34,13 @@ async def store_reflection(
     return cast(str, row["id"])
 
 
+async def increment_reflection_frequency(reflection_id: str) -> None:
+    await execute(
+        "UPDATE reflections SET frequency = frequency + 1 WHERE id = $1",
+        reflection_id,
+    )
+
+
 async def link_episode_reflection(
     org_id: str, episode_id: str, reflection_id: str
 ) -> None:

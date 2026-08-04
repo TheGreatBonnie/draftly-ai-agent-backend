@@ -107,6 +107,10 @@ class Settings(BaseSettings):
     event_buffer_size: int = 500
     event_retention_days: int = 90
 
+    # Memory consolidation
+    consolidation_enabled: bool = False
+    consolidation_interval_hours: int = 6
+
     # Verification
     deterministic_verification_enabled: bool = True
     max_verification_issues_per_type: int = 10

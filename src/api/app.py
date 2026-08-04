@@ -8,6 +8,10 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from src.analytics.consolidation_loop import (
+    start_consolidation,
+    stop_consolidation,
+)
 from src.analytics.events import (
     configure_logging,
     start_flusher,
@@ -53,6 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await start_flusher()
     await start_retention()
     await start_trace_retention()
+    await start_consolidation(org_ids=[])
 
     # Initialize trace collection
     trace_collector = TraceCollector(
@@ -90,6 +95,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await stop_flusher()
     await stop_retention()
     await stop_trace_retention()
+    await stop_consolidation()
 
     await close_pool()
 
