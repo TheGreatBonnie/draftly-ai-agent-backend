@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
@@ -8,11 +9,58 @@ from typing import Any
 
 import structlog
 
+from src.config import settings
 from src.database import execute, fetch_all
 
 logger = structlog.get_logger()
 
 _FlushCallback = Callable[[], Coroutine[Any, Any, Any | None]]
+
+
+async def _purge_expired_traces() -> int:
+    """Delete agent_traces older than the retention window; returns count."""
+    rows = await fetch_all(
+        "DELETE FROM agent_traces "
+        "WHERE created_at < now() - make_interval(days => $1) RETURNING id",
+        settings.trace_retention_days,
+    )
+    return len(rows)
+
+
+async def _trace_retention_loop(
+    interval_hours: float = 24.0,
+    stop_event: asyncio.Event | None = None,
+) -> None:
+    while True:
+        await asyncio.sleep(interval_hours * 3600)
+        try:
+            deleted = await _purge_expired_traces()
+            logger.info("trace_retention", deleted=deleted)
+        except Exception:
+            logger.error("trace_retention_failed")
+        if stop_event is not None and stop_event.is_set():
+            return
+
+
+_trace_retention_task: asyncio.Task[None] | None = None
+
+
+async def start_trace_retention() -> None:
+    global _trace_retention_task
+    if _trace_retention_task is not None and not _trace_retention_task.done():
+        return
+    _trace_retention_task = asyncio.create_task(_trace_retention_loop())
+
+
+async def stop_trace_retention() -> None:
+    global _trace_retention_task
+    if _trace_retention_task is not None:
+        _trace_retention_task.cancel()
+        try:
+            await _trace_retention_task
+        except asyncio.CancelledError:
+            pass
+        _trace_retention_task = None
 
 
 @dataclass

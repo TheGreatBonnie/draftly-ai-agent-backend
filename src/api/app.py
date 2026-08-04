@@ -15,6 +15,11 @@ from src.analytics.events import (
     stop_flusher,
     stop_retention,
 )
+from src.analytics.traces import (
+    TraceCollector,
+    start_trace_retention,
+    stop_trace_retention,
+)
 from src.api.routes import (
     activity,
     clerk,
@@ -41,13 +46,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     from src.agents.graph import set_trace_collector
     from src.analytics.hill_climber import HillClimber
-    from src.analytics.traces import TraceCollector
     from src.config import settings
     from src.integrations.discord_gateway import gateway
 
     await get_pool()
     await start_flusher()
     await start_retention()
+    await start_trace_retention()
 
     # Initialize trace collection
     trace_collector = TraceCollector(
@@ -84,6 +89,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Flush remaining events on shutdown
     await stop_flusher()
     await stop_retention()
+    await stop_trace_retention()
 
     await close_pool()
 

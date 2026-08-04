@@ -126,3 +126,34 @@ async def test_collect_trace_node_populates_rubric_results():
     assert captured[0].rubric_results == [
         {"result": "needs_revision", "criteria": [], "iteration": 1}
     ]
+
+
+@pytest.mark.asyncio
+async def test_purge_expired_traces_deletes_by_retention_window():
+    from src.analytics import traces as traces_module
+
+    with patch(
+        "src.analytics.traces.fetch_all", new_callable=AsyncMock
+    ) as mock_fetch:
+        mock_fetch.return_value = [{"id": "t1"}, {"id": "t2"}]
+        deleted = await traces_module._purge_expired_traces()
+
+    assert deleted == 2
+    sql = mock_fetch.await_args.args[0]
+    assert "DELETE FROM agent_traces" in sql
+    assert "make_interval(days => $1)" in sql
+
+
+@pytest.mark.asyncio
+async def test_start_trace_retention_idempotent():
+    from src.analytics import traces as traces_module
+
+    await traces_module.stop_trace_retention()
+    with patch("src.analytics.traces._trace_retention_loop", new_callable=AsyncMock):
+        await traces_module.start_trace_retention()
+        first = traces_module._trace_retention_task
+        assert first is not None
+        await traces_module.start_trace_retention()
+        assert traces_module._trace_retention_task is first
+        await traces_module.stop_trace_retention()
+        assert traces_module._trace_retention_task is None
