@@ -72,6 +72,9 @@ def build_github_state(payload: dict, org_id: str) -> DocumentationState:
         "subagent_results": {},
         "_node_traces": [],
         "_trace_collected": False,
+        "episode_id": "",
+        "reflection_id": "",
+        "_reflected": False,
     }
 
 

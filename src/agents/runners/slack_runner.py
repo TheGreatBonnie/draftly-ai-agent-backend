@@ -70,6 +70,9 @@ def build_slack_state(
         "subagent_results": {},
         "_node_traces": [],
         "_trace_collected": False,
+        "episode_id": "",
+        "reflection_id": "",
+        "_reflected": False,
     }
 
 

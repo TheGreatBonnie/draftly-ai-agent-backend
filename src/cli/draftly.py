@@ -81,6 +81,9 @@ async def run_workflow(
         "message_history": [],
         "_node_traces": [],
         "_trace_collected": False,
+        "episode_id": "",
+        "reflection_id": "",
+        "_reflected": False,
     }
 
     config: RunnableConfig = {"configurable": {"thread_id": graph_thread_id}}
