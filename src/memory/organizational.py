@@ -7,7 +7,7 @@ from typing import Any, cast
 
 import structlog
 
-from src.database import execute, fetch_all, fetch_one, fetch_one_conn
+from src.database import execute, execute_conn, fetch_all, fetch_one, fetch_one_conn
 
 logger = structlog.get_logger()
 
@@ -94,13 +94,14 @@ async def store_audit_log(
     resource_id: str | None = None,
     details: dict | None = None,
     actor_id: str | None = None,
+    conn: Any = None,
 ) -> None:
-    await execute(
-        """
+    query = """
         INSERT INTO audit_logs
             (org_id, actor, actor_id, action, resource_type, resource_id, details)
         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
-        """,
+    """
+    args = (
         org_id,
         actor,
         actor_id,
@@ -109,3 +110,7 @@ async def store_audit_log(
         resource_id,
         json.dumps(details or {}),
     )
+    if conn is not None:
+        await execute_conn(conn, query, *args)
+    else:
+        await execute(query, *args)

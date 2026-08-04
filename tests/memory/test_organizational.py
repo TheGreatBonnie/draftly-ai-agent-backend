@@ -29,3 +29,16 @@ async def test_store_memory_uses_provided_conn():
     )
     assert result == "mem-1"
     mock_conn.fetchrow.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_store_audit_log_uses_provided_conn():
+    from src.memory.organizational import store_audit_log
+
+    mock_conn = AsyncMock()
+    await store_audit_log(
+        "org-1", actor="agent", action="publish_documentation", conn=mock_conn
+    )
+    mock_conn.execute.assert_awaited_once()
+    sql = mock_conn.execute.await_args.args[0]
+    assert "INSERT INTO audit_logs" in sql
