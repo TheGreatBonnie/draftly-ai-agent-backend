@@ -12,6 +12,7 @@ async def test_delete_embeddings_for_content():
 
     sql = mock_exec.await_args.args[0]
     assert "metadata->>'content_id'" in sql
+    assert "content_id = $1" in sql
     assert mock_exec.await_args.args[1] == "doc-uuid-123"
 
 

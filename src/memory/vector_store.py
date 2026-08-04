@@ -102,14 +102,19 @@ async def store_embedding(
     async with _engine.engine.begin() as conn:
         await conn.execute(
             text(
-                "INSERT INTO public.embeddings (id, content, embedding, metadata) "
-                "VALUES (:id, :content, :embedding, CAST(:metadata AS jsonb))"
+                "INSERT INTO public.embeddings "
+                "(id, content, embedding, metadata, org_id, content_type, content_id) "
+                "VALUES (:id, :content, :embedding, CAST(:metadata AS jsonb), "
+                ":org_id, :content_type, :content_id)"
             ),
             {
                 "id": doc_id,
                 "content": content_text,
                 "embedding": json.dumps(embedding),
                 "metadata": json.dumps(full_metadata),
+                "org_id": org_id,
+                "content_type": content_type,
+                "content_id": content_id,
             },
         )
 
@@ -159,7 +164,8 @@ async def delete_embeddings_for_content(content_id: str) -> None:
     from src.database import execute
 
     await execute(
-        "DELETE FROM public.embeddings WHERE metadata->>'content_id' = $1",
+        "DELETE FROM public.embeddings "
+        "WHERE content_id = $1 OR metadata->>'content_id' = $1",
         content_id,
     )
     logger.info("embeddings_deleted_for_content", content_id=content_id)
