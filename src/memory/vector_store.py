@@ -158,9 +158,13 @@ async def hybrid_search(
     query_text: str,
     content_types: list[str] | None = None,
     k: int = 10,
-    days: int = 180,
+    days: int | None = 180,
 ) -> list[dict]:
-    """Staged retrieval: SQL filter (org/type/recency) → vector rank → dedupe."""
+    """Staged retrieval: SQL filter (org/type/recency) → vector rank → dedupe.
+
+    ``days=None`` disables the recency filter (full recall); a value limits to
+    rows newer than that many days.
+    """
     from src.database import fetch_all
 
     embedding = await embed_text(query_text)
@@ -172,7 +176,7 @@ async def hybrid_search(
                1 - (embedding <=> $4::VECTOR) AS similarity
         FROM embeddings
         WHERE org_id = $1 AND {type_clause}
-          AND created_at > now() - ($3::INT * INTERVAL '1 day')
+          AND ($3::INT IS NULL OR created_at > now() - ($3::INT * INTERVAL '1 day'))
         ORDER BY embedding <=> $4::VECTOR
         LIMIT $5
         """,
@@ -191,13 +195,19 @@ async def hybrid_search(
             continue
         if content_id:
             seen.add(content_id)
+        metadata = row.get("metadata")
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except (ValueError, TypeError):
+                metadata = {}
         results.append(
             {
                 "id": row.get("id", ""),
                 "content_type": row.get("content_type", ""),
                 "content_id": content_id or "",
                 "content_text": row.get("content", ""),
-                "metadata": row.get("metadata", {}),
+                "metadata": metadata or {},
                 "similarity": float(row.get("similarity", 0.0)),
             }
         )

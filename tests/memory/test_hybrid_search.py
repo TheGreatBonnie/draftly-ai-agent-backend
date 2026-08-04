@@ -46,3 +46,26 @@ async def test_hybrid_search_requires_org_filter():
 
     sql = mock_fetch.await_args.args[0]
     assert sql.count("$1") >= 1  # org_id always bound
+
+
+@pytest.mark.asyncio
+async def test_hybrid_search_parses_metadata_and_allows_days_none():
+    from src.memory import vector_store
+
+    rows = [
+        {"id": "1", "content_type": "documentation", "content_id": "doc-1",
+         "content": "a", "metadata": '{"k": "v"}', "similarity": 0.9},
+    ]
+    with patch.object(
+        vector_store, "embed_text", new_callable=AsyncMock, return_value=[0.1]
+    ), patch(
+        "src.database.fetch_all", new_callable=AsyncMock, return_value=rows
+    ) as mock_fetch:
+        results = await vector_store.hybrid_search(
+            "org-1", "q", k=5, days=None
+        )
+
+    assert results[0]["metadata"] == {"k": "v"}  # raw JSON string parsed to dict
+    args = mock_fetch.await_args
+    assert args.args[2] is None  # days param is None
+    assert "$3::INT IS NULL" in args.args[0]

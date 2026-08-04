@@ -20,7 +20,10 @@ async def memory_retrieve_node(state: DocumentationState) -> dict:
     logger.info("memory_retrieve_started", org_id=org_id)
 
     # 1. Hybrid semantic search via Distributed Vector Index (SQL filter + rank + dedupe)
-    semantic_results = await hybrid_search(org_id, question, k=10)
+    #    days=None restores full recall: search_similar (the pre-T14 path) had no recency
+    #    window, and a 180-day cutoff would silently drop older org docs from
+    #    existing_docs (defeating cross-run dedupe) and semantic_context.
+    semantic_results = await hybrid_search(org_id, question, k=10, days=None)
 
     # 2. Episodic search — similar support threads
     sanitized = re.sub(r'[^\w\s]', ' ', question)
