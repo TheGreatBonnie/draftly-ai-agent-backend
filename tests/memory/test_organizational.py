@@ -1,0 +1,31 @@
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_store_memory_upserts_on_key_collision():
+    from src.memory.organizational import store_memory
+
+    with patch("src.memory.organizational.fetch_one", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = {"id": "mem-1"}
+        first = await store_memory("org-1", "organizational", "key-1", {"v": 1})
+        second = await store_memory("org-1", "organizational", "key-1", {"v": 2})
+
+    assert first == "mem-1"
+    assert second == "mem-1"
+    sql = mock_fetch.await_args.args[0]
+    assert "ON CONFLICT (org_id, key)" in sql
+
+
+@pytest.mark.asyncio
+async def test_store_memory_uses_provided_conn():
+    from src.memory.organizational import store_memory
+
+    mock_conn = AsyncMock()
+    mock_conn.fetchrow.return_value = {"id": "mem-1"}
+    result = await store_memory(
+        "org-1", "organizational", "key-1", {"v": 1}, conn=mock_conn
+    )
+    assert result == "mem-1"
+    mock_conn.fetchrow.assert_awaited_once()

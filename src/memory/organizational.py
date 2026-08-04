@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime
-from typing import cast
+from typing import Any, cast
 
 import structlog
 
-from src.database import execute, fetch_all, fetch_one
+from src.database import execute, fetch_all, fetch_one, fetch_one_conn
 
 logger = structlog.get_logger()
 
@@ -28,20 +28,21 @@ async def store_memory(
     value: dict,
     source: str | None = None,
     confidence: float = 1.0,
+    conn: Any = None,
 ) -> str:
-    row = await fetch_one(
-        """
+    query = """
         INSERT INTO agent_memory (org_id, memory_type, key, value, source, confidence)
         VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+        ON CONFLICT (org_id, key)
+        DO UPDATE SET value = excluded.value, source = excluded.source,
+                      confidence = excluded.confidence
         RETURNING id::text
-        """,
-        org_id,
-        memory_type,
-        key,
-        json.dumps(value),
-        source,
-        confidence,
-    )
+    """
+    args = (org_id, memory_type, key, json.dumps(value), source, confidence)
+    if conn is not None:
+        row = await fetch_one_conn(conn, query, *args)
+    else:
+        row = await fetch_one(query, *args)
     if row is None:
         raise RuntimeError("memory row missing after insert")
     logger.info("memory_stored", id=row["id"], memory_type=memory_type, key=key)
