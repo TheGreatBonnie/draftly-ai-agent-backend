@@ -153,6 +153,57 @@ async def search_similar(
     ]
 
 
+async def hybrid_search(
+    org_id: str,
+    query_text: str,
+    content_types: list[str] | None = None,
+    k: int = 10,
+    days: int = 180,
+) -> list[dict]:
+    """Staged retrieval: SQL filter (org/type/recency) → vector rank → dedupe."""
+    from src.database import fetch_all
+
+    embedding = await embed_text(query_text)
+
+    type_clause = "($2::STRING[] IS NULL OR content_type = ANY($2))"
+    rows = await fetch_all(
+        f"""
+        SELECT id::text as id, content, metadata, content_type, content_id, created_at,
+               1 - (embedding <=> $4::VECTOR) AS similarity
+        FROM embeddings
+        WHERE org_id = $1 AND {type_clause}
+          AND created_at > now() - make_interval(days => $3)
+        ORDER BY embedding <=> $4::VECTOR
+        LIMIT $5
+        """,
+        org_id,
+        content_types,
+        days,
+        json.dumps(embedding).replace(" ", ""),
+        k,
+    )
+
+    seen: set[str] = set()
+    results: list[dict] = []
+    for row in rows:
+        content_id = row.get("content_id")
+        if content_id and content_id in seen:
+            continue
+        if content_id:
+            seen.add(content_id)
+        results.append(
+            {
+                "id": row.get("id", ""),
+                "content_type": row.get("content_type", ""),
+                "content_id": content_id or "",
+                "content_text": row.get("content", ""),
+                "metadata": row.get("metadata", {}),
+                "similarity": float(row.get("similarity", 0.0)),
+            }
+        )
+    return results
+
+
 async def delete_embedding(embedding_id: str) -> None:
     store = await get_vector_store()
     await store.adelete([embedding_id])
