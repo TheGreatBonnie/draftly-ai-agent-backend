@@ -11,6 +11,7 @@ from langgraph.graph import END, StateGraph
 from src.agents.nodes.human import human_review_node
 from src.agents.nodes.memory import memory_retrieve_node
 from src.agents.nodes.publish import publish_node
+from src.agents.nodes.reflect import reflect_node
 from src.agents.nodes.synthesize import synthesize_node
 from src.agents.nodes.write import write_docs_node
 from src.agents.state import DocumentationState
@@ -128,6 +129,7 @@ def build_hybrid_graph() -> StateGraph:
         graph.add_node(name, _wrap_node_with_tracing(name, fn))
 
     graph.add_node("collect_trace", collect_trace_node)
+    graph.add_node("reflect", reflect_node)
 
     graph.set_entry_point("ingest")
     graph.add_edge("ingest", "memory_retrieve")
@@ -160,7 +162,8 @@ def build_hybrid_graph() -> StateGraph:
     )
 
     graph.add_edge("publish", "collect_trace")
-    graph.add_edge("collect_trace", END)
+    graph.add_edge("collect_trace", "reflect")
+    graph.add_edge("reflect", END)
 
     logger.info("hybrid_graph_built_with_tracing")
     return graph
