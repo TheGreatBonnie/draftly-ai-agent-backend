@@ -157,3 +157,69 @@ async def test_start_trace_retention_idempotent():
         assert traces_module._trace_retention_task is first
         await traces_module.stop_trace_retention()
         assert traces_module._trace_retention_task is None
+
+
+@pytest.mark.asyncio
+async def test_purge_expired_traces_no_rows():
+    from src.analytics import traces as traces_module
+
+    with patch(
+        "src.analytics.traces.fetch_all",
+        new_callable=AsyncMock,
+        return_value=[],
+    ):
+        count = await traces_module._purge_expired_traces()
+
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_retention_loop_runs_once_and_stops():
+    import asyncio
+
+    from src.analytics import traces as traces_module
+
+    stop_event = asyncio.Event()
+    with (
+        patch(
+            "src.analytics.traces._purge_expired_traces",
+            new_callable=AsyncMock,
+            return_value=3,
+        ) as mock_purge,
+        patch(
+            "src.analytics.traces.asyncio.Event",
+            return_value=stop_event,
+        ),
+        patch("src.analytics.traces.logger") as mock_logger,
+    ):
+        stop_event.set()
+        await traces_module._trace_retention_loop(
+            interval_hours=0.0, stop_event=stop_event
+        )
+
+    mock_purge.assert_awaited_once()
+    mock_logger.info.assert_called_once()
+    assert mock_logger.info.call_args.args[0] == "trace_retention"
+    assert mock_logger.info.call_args.kwargs["deleted"] == 3
+
+
+@pytest.mark.asyncio
+async def test_retention_loop_logs_failure():
+    import asyncio
+
+    from src.analytics import traces as traces_module
+
+    stop_event = asyncio.Event()
+    with (
+        patch(
+            "src.analytics.traces._purge_expired_traces",
+            side_effect=Exception("DB down"),
+        ),
+        patch("src.analytics.traces.logger") as mock_logger,
+    ):
+        stop_event.set()
+        await traces_module._trace_retention_loop(
+            interval_hours=0.0, stop_event=stop_event
+        )
+    mock_logger.error.assert_called_once()
+    assert mock_logger.error.call_args.args[0] == "trace_retention_failed"
