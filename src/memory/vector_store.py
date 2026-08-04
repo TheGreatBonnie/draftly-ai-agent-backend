@@ -156,15 +156,10 @@ async def delete_embedding(embedding_id: str) -> None:
 
 async def delete_embeddings_for_content(content_id: str) -> None:
     """Delete all embeddings for a given content_id (e.g., all chunks of a document)."""
-    store = await get_vector_store()
+    from src.database import execute
 
-    results = await store.asimilarity_search_with_score(
-        " ",
-        k=1000,
-        filter={"content_id": content_id},
+    await execute(
+        "DELETE FROM public.embeddings WHERE metadata->>'content_id' = $1",
+        content_id,
     )
-
-    ids = [doc.id for doc, _ in results if doc.id]
-    if ids:
-        await store.adelete(ids)
-    logger.info("embeddings_deleted_for_content", content_id=content_id, count=len(ids))
+    logger.info("embeddings_deleted_for_content", content_id=content_id)
