@@ -143,7 +143,7 @@ async def test_purge_expired_traces_deletes_by_retention_window():
     assert deleted == 2
     sql = mock_fetch.await_args.args[0]
     assert "DELETE FROM agent_traces" in sql
-    assert "make_interval(days => $1)" in sql
+    assert "$1::INT * INTERVAL '1 day'" in sql
 
 
 @pytest.mark.asyncio

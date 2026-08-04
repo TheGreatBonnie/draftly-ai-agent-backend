@@ -172,7 +172,7 @@ async def hybrid_search(
                1 - (embedding <=> $4::VECTOR) AS similarity
         FROM embeddings
         WHERE org_id = $1 AND {type_clause}
-          AND created_at > now() - make_interval(days => $3)
+          AND created_at > now() - ($3::INT * INTERVAL '1 day')
         ORDER BY embedding <=> $4::VECTOR
         LIMIT $5
         """,

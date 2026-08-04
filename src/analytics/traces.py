@@ -21,7 +21,7 @@ async def _purge_expired_traces() -> int:
     """Delete agent_traces older than the retention window; returns count."""
     rows = await fetch_all(
         "DELETE FROM agent_traces "
-        "WHERE created_at < now() - make_interval(days => $1) RETURNING id",
+        "WHERE created_at < now() - ($1::INT * INTERVAL '1 day') RETURNING id",
         settings.trace_retention_days,
     )
     return len(rows)
