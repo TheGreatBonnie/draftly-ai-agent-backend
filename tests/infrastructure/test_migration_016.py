@@ -39,4 +39,7 @@ def test_schema_sql_stays_in_sync_with_new_tables():
     assert "CREATE TABLE IF NOT EXISTS episodes" in schema
     assert "CREATE TABLE IF NOT EXISTS reflections" in schema
     assert "CREATE TABLE IF NOT EXISTS memory_links" in schema
+    assert "CREATE TABLE IF NOT EXISTS user_preferences" in schema
+    assert "CREATE TABLE IF NOT EXISTS evaluation_results" in schema
     assert "CREATE TABLE IF NOT EXISTS agent_trace_nodes" in schema
+    assert "ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS org_id" in schema

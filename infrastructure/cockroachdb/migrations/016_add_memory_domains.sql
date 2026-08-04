@@ -10,7 +10,7 @@ UPDATE embeddings
 SET org_id = COALESCE(metadata->>'org_id', org_id),
     content_type = COALESCE(metadata->>'content_type', content_type),
     content_id = COALESCE(metadata->>'content_id', content_id)
-WHERE org_id IS NULL OR content_id IS NULL;
+WHERE org_id IS NULL OR content_type IS NULL OR content_id IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_embeddings_org ON embeddings (org_id);
 CREATE INDEX IF NOT EXISTS idx_embeddings_org_type ON embeddings (org_id, content_type);
@@ -109,10 +109,13 @@ CREATE INDEX IF NOT EXISTS idx_agent_trace_nodes_org_created ON agent_trace_node
 -- dropped the org_id column (the constraint came back down with it) and never
 -- recreated it. Without it, store_memory's ON CONFLICT (org_id, key) upsert fails
 -- with "no unique or exclusion constraint matching the ON CONFLICT specification".
--- Dedup any duplicates that accumulated since 007 (keep the most recent row),
--- then restore uniqueness. Idempotent: no-op when the constraint already exists.
--- NOTE: this blocks the ALTER until the DELETE completes, so it does not run
--- concurrently with application writes to agent_memory.
+-- Dedup any duplicates that accumulated since 007 (keep one row per (org_id, key),
+-- preferring the most recently created), then restore uniqueness. The DELETE and
+-- the ADD CONSTRAINT run in a single transaction (CockroachDB DDL is transactional),
+-- so a concurrent insert cannot create a duplicate in the gap between them and fail
+-- the ALTER. Idempotent: re-running is a no-op once the constraint exists.
+BEGIN;
+
 DELETE FROM agent_memory
 WHERE id NOT IN (
     SELECT DISTINCT ON (org_id, key) id
@@ -122,3 +125,5 @@ WHERE id NOT IN (
 
 ALTER TABLE agent_memory
     ADD CONSTRAINT IF NOT EXISTS agent_memory_org_id_key UNIQUE (org_id, key);
+
+COMMIT;
