@@ -69,3 +69,8 @@ class DocumentationState(TypedDict):
     # Trace collection for hill-climbing
     _node_traces: list  # list[NodeTrace] — populated during execution
     _trace_collected: bool
+
+    # Episode + reflection memory
+    episode_id: str
+    reflection_id: str
+    _reflected: bool

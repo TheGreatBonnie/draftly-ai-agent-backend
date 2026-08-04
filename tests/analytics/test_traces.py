@@ -105,7 +105,9 @@ async def test_collect_trace_node_populates_rubric_results():
         async def collect(self, trace):
             captured.append(trace)
 
-    with patch("src.agents.graph._trace_collector", _FakeCollector()):
+    with patch("src.agents.graph._trace_collector", _FakeCollector()), patch(
+        "src.agents.graph.store_episode", new_callable=AsyncMock, return_value="ep-1"
+    ):
         await collect_trace_node(
             {
                 "org_id": "org-1",
@@ -223,3 +225,35 @@ async def test_retention_loop_logs_failure():
         )
     mock_logger.error.assert_called_once()
     assert mock_logger.error.call_args.args[0] == "trace_retention_failed"
+
+
+@pytest.mark.asyncio
+async def test_collect_trace_node_writes_episode():
+    from src.agents.graph import collect_trace_node
+
+    captured: list = []
+
+    class _FakeCollector:
+        async def collect(self, trace):
+            captured.append(trace)
+
+    state = {
+        "org_id": "org-1",
+        "workflow_id": "w-1",
+        "question": "q",
+        "question_type": "simple",
+        "source": "cli",
+        "confidence_score": 0.6,
+        "published_urls": [{"platform": "draftly"}],
+        "rubric_evaluations": [],
+        "_node_traces": [],
+    }
+
+    with patch("src.agents.graph._trace_collector", _FakeCollector()), patch(
+        "src.agents.graph.store_episode", new_callable=AsyncMock, return_value="ep-1"
+    ) as mock_ep:
+        result = await collect_trace_node(state)
+
+    assert result["episode_id"] == "ep-1"
+    mock_ep.assert_awaited_once()
+    assert mock_ep.await_args.kwargs["outcome"] == "published"

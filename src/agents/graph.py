@@ -15,6 +15,7 @@ from src.agents.nodes.synthesize import synthesize_node
 from src.agents.nodes.write import write_docs_node
 from src.agents.state import DocumentationState
 from src.analytics.traces import AgentTrace, NodeTrace, TraceCollector
+from src.memory.episodes import store_episode
 
 logger = structlog.get_logger()
 
@@ -26,12 +27,30 @@ def set_trace_collector(collector: TraceCollector) -> None:
 
 
 async def collect_trace_node(state: DocumentationState) -> dict:
-    """Collect final trace after pipeline completion."""
+    """Collect final trace after pipeline completion and persist an episode."""
     global _trace_collector
-    if _trace_collector is None:
-        return {"_trace_collected": True}
+
+    result: dict = {"_trace_collected": True}
 
     node_traces: list[NodeTrace] = state.get("_node_traces", []) or []
+    outcome = "published" if state.get("published_urls") else "rejected"
+    try:
+        episode_id = await store_episode(
+            org_id=state["org_id"],
+            workflow_id=state.get("workflow_id", ""),
+            source=state.get("source", "cli"),
+            input_summary=state["question"],
+            outcome=outcome,
+            quality_score=state.get("confidence_score", 0),
+            duration_ms=int(sum(t.duration_ms for t in node_traces)),
+        )
+        result["episode_id"] = episode_id
+    except Exception as e:
+        logger.error("episode_store_failed", error=str(e))
+
+    if _trace_collector is None:
+        return result
+
     try:
         trace = AgentTrace(
             trace_id=str(uuid4()),
@@ -52,7 +71,7 @@ async def collect_trace_node(state: DocumentationState) -> dict:
     except Exception as e:
         logger.error("trace_collection_failed", error=str(e))
 
-    return {"_trace_collected": True}
+    return result
 
 
 def _wrap_node_with_tracing(
