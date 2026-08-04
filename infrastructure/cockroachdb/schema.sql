@@ -70,6 +70,18 @@ CREATE TABLE IF NOT EXISTS embeddings (
 -- C-SPANN index created by AsyncCockroachDBVectorStore.aapply_vector_index()
 -- To create manually: CREATE VECTOR INDEX ON embeddings (embedding vector_cosine_ops);
 
+-- Promoted metadata columns (migration 016): org_id, content_type, content_id,
+-- workflow_id were previously stored only in the metadata JSONB column.
+ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS org_id STRING;
+ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS content_type STRING;
+ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS content_id STRING;
+ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS workflow_id STRING;
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_org ON embeddings (org_id);
+CREATE INDEX IF NOT EXISTS idx_embeddings_org_type ON embeddings (org_id, content_type);
+CREATE INDEX IF NOT EXISTS idx_embeddings_content_id ON embeddings (content_id);
+CREATE INDEX IF NOT EXISTS idx_embeddings_workflow ON embeddings (workflow_id);
+
 -- 5. Review Sessions (reviewer memory)
 CREATE TABLE IF NOT EXISTS review_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -256,3 +268,93 @@ CREATE TABLE IF NOT EXISTS slack_workflows (
 
 CREATE INDEX IF NOT EXISTS idx_slack_workflows_status ON slack_workflows(status);
 CREATE INDEX IF NOT EXISTS idx_slack_workflows_thread ON slack_workflows(channel_id, thread_ts);
+
+-- 16. Memory Domain Tables (migration 016)
+
+CREATE TABLE IF NOT EXISTS episodes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id STRING NOT NULL REFERENCES organizations(clerk_org_id) ON DELETE CASCADE,
+    workflow_id STRING,
+    thread_id UUID REFERENCES support_threads(id) ON DELETE SET NULL,
+    source STRING,
+    input_summary STRING,
+    evidence_ids JSONB DEFAULT '[]',
+    doc_id UUID REFERENCES documentation(id) ON DELETE SET NULL,
+    outcome STRING,
+    quality_score FLOAT,
+    duration_ms INT8,
+    token_usage INT8,
+    cost_cents INT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_episodes_org_created ON episodes (org_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_episodes_workflow ON episodes (workflow_id);
+CREATE INDEX IF NOT EXISTS idx_episodes_doc ON episodes (doc_id);
+
+CREATE TABLE IF NOT EXISTS reflections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id STRING NOT NULL REFERENCES organizations(clerk_org_id) ON DELETE CASCADE,
+    episode_id UUID REFERENCES episodes(id) ON DELETE SET NULL,
+    lesson STRING NOT NULL,
+    confidence FLOAT,
+    frequency INT DEFAULT 1,
+    tags STRING[],
+    status STRING DEFAULT 'active' CHECK (status IN ('active', 'superseded', 'archived')),
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_reflections_org_status ON reflections (org_id, status);
+CREATE INDEX IF NOT EXISTS idx_reflections_episode ON reflections (episode_id);
+
+CREATE TABLE IF NOT EXISTS memory_links (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id STRING NOT NULL REFERENCES organizations(clerk_org_id) ON DELETE CASCADE,
+    from_type STRING NOT NULL,
+    from_id UUID NOT NULL,
+    to_type STRING NOT NULL,
+    to_id UUID NOT NULL,
+    relation STRING NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_memory_links_from ON memory_links (from_type, from_id);
+CREATE INDEX IF NOT EXISTS idx_memory_links_to ON memory_links (to_type, to_id);
+
+CREATE TABLE IF NOT EXISTS user_preferences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id STRING NOT NULL REFERENCES organizations(clerk_org_id) ON DELETE CASCADE,
+    user_id STRING NOT NULL,
+    preferences JSONB NOT NULL DEFAULT '{}',
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (org_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS evaluation_results (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id STRING NOT NULL REFERENCES organizations(clerk_org_id) ON DELETE CASCADE,
+    doc_id UUID REFERENCES documentation(id) ON DELETE CASCADE,
+    episode_id UUID REFERENCES episodes(id) ON DELETE SET NULL,
+    metric STRING NOT NULL,
+    score FLOAT,
+    details JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_evaluation_doc ON evaluation_results (doc_id);
+CREATE INDEX IF NOT EXISTS idx_evaluation_metric ON evaluation_results (metric, created_at);
+
+CREATE TABLE IF NOT EXISTS agent_trace_nodes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_id STRING NOT NULL REFERENCES organizations(clerk_org_id) ON DELETE CASCADE,
+    trace_id UUID,
+    workflow_id STRING,
+    node_name STRING NOT NULL,
+    start_time TIMESTAMPTZ,
+    end_time TIMESTAMPTZ,
+    duration_ms FLOAT,
+    token_usage INT8,
+    input_state JSONB,
+    output_state JSONB,
+    error STRING,
+    succeeded BOOL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agent_trace_nodes_workflow ON agent_trace_nodes (workflow_id, node_name);
+CREATE INDEX IF NOT EXISTS idx_agent_trace_nodes_org_created ON agent_trace_nodes (org_id, created_at);

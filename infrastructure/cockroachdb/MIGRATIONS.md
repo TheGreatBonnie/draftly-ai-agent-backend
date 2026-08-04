@@ -14,3 +14,9 @@
 psql "$COCKROACHDB_URL" -f infrastructure/cockroachdb/schema.sql
 ```
 Tables created: organizations, support_threads, documentation, embeddings, review_sessions, agent_workflows, agent_memory, audit_logs, reviewers, github_installations, github_workflows.
+
+### Aug 2 — Migration 016 (memory domains)
+```bash
+psql "$COCKROACHDB_URL" -f infrastructure/cockroachdb/migrations/016_add_memory_domains.sql
+```
+Adds the memory domain tables (episodes, reflections, memory_links, user_preferences, evaluation_results, agent_trace_nodes), promotes embeddings metadata (org_id, content_type, content_id, workflow_id) from the JSONB metadata column to real indexed columns with a backfill, and restores the `UNIQUE (org_id, key)` constraint on agent_memory that migration 007 dropped — required for the `store_memory` upsert. Re-running is safe: all DDL is `IF NOT EXISTS`. The migration dedups agent_memory first (keeping the most recent row per `(org_id, key)`) so the unique constraint can be restored.
