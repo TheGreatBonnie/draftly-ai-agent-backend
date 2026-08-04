@@ -40,3 +40,21 @@ async def test_consolidation_loop_respects_enabled_flag():
         await consolidation_loop._run_consolidation_once(["org-1"])
 
     mock_cons.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_consolidate_skips_episodes_with_existing_reflections():
+    from src.memory import consolidation
+
+    with patch(
+        "src.memory.consolidation.fetch_all", new_callable=AsyncMock, return_value=[]
+    ) as mock_fetch, patch(
+        "src.memory.consolidation.store_reflection", new_callable=AsyncMock
+    ) as mock_store:
+        created = await consolidation.consolidate("org-1")
+
+    assert created == 0
+    mock_store.assert_not_awaited()
+    sql = mock_fetch.await_args.args[0]
+    assert "NOT EXISTS" in sql
+    assert "episode_id = episodes.id" in sql

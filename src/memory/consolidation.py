@@ -20,6 +20,10 @@ async def consolidate(org_id: str) -> int:
         FROM episodes
         WHERE org_id = $1
           AND created_at > now() - interval '7 days'
+          AND NOT EXISTS (
+              SELECT 1 FROM reflections r
+              WHERE r.org_id = episodes.org_id AND r.episode_id = episodes.id
+          )
         ORDER BY created_at ASC
         """,
         org_id,
