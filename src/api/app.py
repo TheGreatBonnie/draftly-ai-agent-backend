@@ -34,6 +34,7 @@ from src.api.routes import (
     improvements,
     knowledge,
     memory,
+    metrics,
     review,
     reviewers,
     reviews,
@@ -113,6 +114,7 @@ app.include_router(clerk.router, prefix="/api/clerk", tags=["clerk"])
 app.include_router(slack.router, prefix="/api/slack", tags=["slack"])
 app.include_router(discord.router, prefix="/api/discord", tags=["discord"])
 app.include_router(activity.router, prefix="/api/activity", tags=["activity"])
+app.include_router(metrics.router, prefix="/api/metrics", tags=["metrics"])
 app.include_router(improvements.router, prefix="/api", tags=["improvements"])
 app.include_router(health.router, prefix="/api", tags=["health"])
 
