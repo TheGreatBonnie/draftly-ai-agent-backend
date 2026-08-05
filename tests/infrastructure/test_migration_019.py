@@ -21,4 +21,7 @@ def test_schema_sql_marks_embeddings_org_id_not_null():
         Path(__file__).resolve().parent.parent.parent
         / "infrastructure/cockroachdb/schema.sql"
     ).read_text()
-    assert "org_id STRING NOT NULL" in schema
+    assert (
+        "ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS org_id STRING NOT NULL"
+        in schema
+    )
