@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS embeddings (
 
 -- Promoted metadata columns (migration 016): org_id, content_type, content_id,
 -- workflow_id were previously stored only in the metadata JSONB column.
-ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS org_id STRING;
+ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS org_id STRING NOT NULL;
 ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS content_type STRING;
 ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS content_id STRING;
 ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS workflow_id STRING;

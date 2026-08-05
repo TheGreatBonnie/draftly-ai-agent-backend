@@ -32,3 +32,9 @@ Adds `agent_trace_nodes.trace_id → agent_traces(id)` with `ON DELETE CASCADE` 
 psql "$COCKROACHDB_URL" -f infrastructure/cockroachdb/migrations/018_add_memory_versions.sql
 ```
 Adds `agent_memory_versions`, an archive of `agent_memory` pre-images written atomically by the `store_memory` upsert CTE. `agent_memory` remains the single current row (`UNIQUE (org_id, key)` intact); history is read via `GET /api/memory/versions`. Re-running is safe: all DDL is `IF NOT EXISTS`.
+
+### Aug 5 — Migration 019 (embeddings org_id cleanup)
+```bash
+psql "$COCKROACHDB_URL" -f infrastructure/cockroachdb/migrations/019_embeddings_org_id_cleanup.sql
+```
+Backfills `embeddings.org_id` for `documentation`/`support_threads` rows from the source tables (join on `content_id`), deletes rows still NULL (unreachable dead weight), then sets `org_id NOT NULL`. Every write path already supplies `org_id`, so the constraint is safe. Re-running is safe.
