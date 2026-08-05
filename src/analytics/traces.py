@@ -18,13 +18,21 @@ _FlushCallback = Callable[[], Coroutine[Any, Any, Any | None]]
 
 
 async def _purge_expired_traces() -> int:
-    """Delete agent_traces older than the retention window; returns count."""
-    rows = await fetch_all(
-        "DELETE FROM agent_traces "
-        "WHERE created_at < now() - ($1::INT * INTERVAL '1 day') RETURNING id",
-        settings.trace_retention_days,
+    """Delete expired rows for telemetry tables; episodic memory is preserved."""
+    policies = (
+        ("agent_traces", settings.trace_retention_days),
+        ("agent_trace_nodes", settings.trace_retention_days),
+        ("slack_conversations", settings.slack_retention_days),
     )
-    return len(rows)
+    total = 0
+    for table, days in policies:
+        rows = await fetch_all(
+            f"DELETE FROM {table} "
+            "WHERE created_at < now() - ($1::INT * INTERVAL '1 day') RETURNING id",
+            days,
+        )
+        total += len(rows)
+    return total
 
 
 async def _trace_retention_loop(

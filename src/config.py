@@ -101,6 +101,9 @@ class Settings(BaseSettings):
     auto_apply_improvements: bool = False
     trace_retention_days: int = 90
 
+    # Retention
+    slack_retention_days: int = 30
+
     # Event capture (dashboard telemetry)
     event_capture_enabled: bool = True
     event_flush_interval_seconds: float = 5.0

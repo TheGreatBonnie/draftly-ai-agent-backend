@@ -142,10 +142,10 @@ async def test_purge_expired_traces_deletes_by_retention_window():
         mock_fetch.return_value = [{"id": "t1"}, {"id": "t2"}]
         deleted = await traces_module._purge_expired_traces()
 
-    assert deleted == 2
-    sql = mock_fetch.await_args.args[0]
-    assert "DELETE FROM agent_traces" in sql
-    assert "$1::INT * INTERVAL '1 day'" in sql
+    assert deleted == 6
+    sqls = [c.args[0] for c in mock_fetch.call_args_list]
+    assert any("DELETE FROM agent_traces" in s for s in sqls)
+    assert any("$1::INT * INTERVAL '1 day'" in s for s in sqls)
 
 
 @pytest.mark.asyncio
@@ -444,3 +444,19 @@ def test_sanitize_state_truncates_long_values():
     out = _sanitize_state(state)
     assert out["key"] == json.dumps("short")
     assert len(out["long_field"]) <= 2000
+
+
+@pytest.mark.asyncio
+async def test_purge_expired_traces_covers_trace_nodes_and_slack():
+    from src.analytics import traces as traces_module
+
+    with patch(
+        "src.analytics.traces.fetch_all", new_callable=AsyncMock
+    ) as mock_fetch:
+        mock_fetch.return_value = []
+        deleted = await traces_module._purge_expired_traces()
+
+    assert deleted == 0
+    sqls = [c.args[0] for c in mock_fetch.call_args_list]
+    assert any("DELETE FROM agent_trace_nodes" in s for s in sqls)
+    assert any("DELETE FROM slack_conversations" in s for s in sqls)
