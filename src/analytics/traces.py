@@ -81,7 +81,10 @@ def _sanitize_state(state: Mapping[str, Any] | None) -> dict:
     if not state:
         return {}
     max_len = 2000
-    drop_keys = {"draft_content", "knowledge_package", "message_history", "subagent_results"}
+    drop_keys = {
+        "draft_content", "knowledge_package", "message_history",
+        "subagent_results", "messages", "_node_traces",
+    }
     out: dict[str, Any] = {}
     for k, v in state.items():
         if k in drop_keys:
@@ -235,15 +238,25 @@ async def _store_traces(traces: list[AgentTrace]) -> None:
             )
 
 
+def _parse_ts(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        return datetime.utcnow()
+
+
 def _dict_to_trace(data: dict) -> AgentTrace:
     node_traces = [
         NodeTrace(
             node_name=nt["node_name"],
-            start_time=datetime.utcnow(),
-            end_time=datetime.utcnow(),
+            start_time=_parse_ts(nt.get("start_time")),
+            end_time=_parse_ts(nt.get("end_time")),
             duration_ms=nt.get("duration_ms", 0),
             error=nt.get("error"),
             token_usage=nt.get("token_usage", 0),
+            succeeded=nt.get("succeeded", True),
         )
         for nt in data.get("node_traces", [])
     ]

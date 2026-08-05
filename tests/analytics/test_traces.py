@@ -373,6 +373,36 @@ def test_node_trace_token_usage_survives_payload_roundtrip():
     assert restored.node_traces[0].token_usage == 42
 
 
+def test_node_trace_timing_succeeded_error_survive_payload_roundtrip():
+    from src.analytics import traces
+
+    start = datetime(2026, 8, 5, 1, 0, 0)
+    end = datetime(2026, 8, 5, 1, 0, 1)
+    trace = traces.AgentTrace(
+        trace_id="t1", org_id="org-1", workflow_id="w1",
+        question="q", question_type="how_to", source="cli",
+        nodes_executed=["ai_review"],
+        node_traces=[traces.NodeTrace(
+            node_name="ai_review",
+            start_time=start,
+            end_time=end,
+            duration_ms=1000.0,
+            error="boom",
+            token_usage=7,
+            succeeded=False,
+        )],
+        total_duration_ms=1000.0,
+    )
+    payload = json.loads(traces._trace_to_payload(trace))
+    restored = traces._dict_to_trace(payload)
+    nt = restored.node_traces[0]
+    assert nt.start_time == start
+    assert nt.end_time == end
+    assert nt.succeeded is False
+    assert nt.error == "boom"
+    assert nt.token_usage == 7
+
+
 @pytest.mark.asyncio
 async def test_store_traces_writes_per_node_rows():
     from src.analytics import traces as traces_module
