@@ -32,6 +32,24 @@ async def test_store_memory_uses_provided_conn():
 
 
 @pytest.mark.asyncio
+async def test_store_memory_sets_last_accessed():
+    from src.memory.organizational import store_memory
+
+    with patch(
+        "src.memory.organizational.fetch_one", new_callable=AsyncMock
+    ) as mock_fetch, patch(
+        "src.memory.organizational.fetch_one_conn", new_callable=AsyncMock
+    ) as mock_fetch_conn:
+        mock_fetch.return_value = {"id": "mem-1"}
+        mock_fetch_conn.return_value = {"id": "mem-1"}
+        await store_memory("org-1", "organizational", "key-1", {"v": 1})
+
+    sql = mock_fetch.await_args.args[0]
+    assert "last_accessed" in sql
+    assert "last_accessed = now()" in sql
+
+
+@pytest.mark.asyncio
 async def test_store_audit_log_uses_provided_conn():
     from src.memory.organizational import store_audit_log
 

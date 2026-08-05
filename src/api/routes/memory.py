@@ -67,7 +67,7 @@ async def memory_stats(token: dict = Depends(get_verified_token)) -> dict:
             "SELECT COUNT(*)::int as count FROM ("
             "  SELECT content_id FROM embeddings "
             "  WHERE org_id = $1 AND content_id IS NOT NULL "
-            "  GROUP BY content_id HAVING COUNT(*) > 1"
+            "  GROUP BY content_id, content HAVING COUNT(*) > 1"
             ") t",
             org_id,
         )

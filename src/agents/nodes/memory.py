@@ -6,7 +6,7 @@ import structlog
 
 from src.agents.state import DocumentationState
 from src.memory.episodic import search_threads
-from src.memory.organizational import search_memory
+from src.memory.organizational import search_memory, update_memory_access
 from src.memory.reviewer import get_reviewer_memory
 from src.memory.vector_store import hybrid_search
 
@@ -33,6 +33,8 @@ async def memory_retrieve_node(state: DocumentationState) -> dict:
     # 3. Organizational memory — best practices, known solutions
     pattern = question.split()[0] if question else ""
     org_results = await search_memory(org_id, key_pattern=pattern, limit=5)
+    for r in org_results:
+        await update_memory_access(r["id"])
 
     # 4. Reviewer memory — past feedback
     reviewer_results = await get_reviewer_memory(org_id, limit=5)

@@ -31,11 +31,12 @@ async def store_memory(
     conn: Any = None,
 ) -> str:
     query = """
-        INSERT INTO agent_memory (org_id, memory_type, key, value, source, confidence)
-        VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+        INSERT INTO agent_memory
+            (org_id, memory_type, key, value, source, confidence, last_accessed)
+        VALUES ($1, $2, $3, $4::jsonb, $5, $6, now())
         ON CONFLICT (org_id, key)
         DO UPDATE SET value = excluded.value, source = excluded.source,
-                      confidence = excluded.confidence
+                      confidence = excluded.confidence, last_accessed = now()
         RETURNING id::text
     """
     args = (org_id, memory_type, key, json.dumps(value), source, confidence)

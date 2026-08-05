@@ -3,7 +3,7 @@ from __future__ import annotations
 from langchain_core.tools import tool
 
 from src.memory.episodic import search_threads
-from src.memory.organizational import search_memory
+from src.memory.organizational import search_memory, update_memory_access
 from src.memory.reviewer import get_reviewer_memory
 from src.memory.vector_store import search_similar
 
@@ -36,6 +36,8 @@ async def search_episodic_memory(org_id: str, query: str, k: int = 5) -> str:
 async def search_organizational_memory(org_id: str, key: str) -> str:
     """Search organizational knowledge base for best practices and known solutions."""
     results = await search_memory(org_id, key_pattern=key, limit=5)
+    for r in results:
+        await update_memory_access(r["id"])
     if not results:
         return "No organizational memory found."
     return "\n".join(f"[{r['memory_type']}] {r['key']}: {str(r['value'])[:200]}" for r in results)
