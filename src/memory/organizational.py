@@ -31,13 +31,27 @@ async def store_memory(
     conn: Any = None,
 ) -> str:
     query = """
-        INSERT INTO agent_memory
-            (org_id, memory_type, key, value, source, confidence, last_accessed)
-        VALUES ($1, $2, $3, $4::jsonb, $5, $6, now())
-        ON CONFLICT (org_id, key)
-        DO UPDATE SET value = excluded.value, source = excluded.source,
-                      confidence = excluded.confidence, last_accessed = now()
-        RETURNING id::text
+        WITH archived AS (
+            INSERT INTO agent_memory_versions (memory_id, version, value, source, confidence)
+            SELECT am.id,
+                   COALESCE(
+                       (SELECT MAX(version) FROM agent_memory_versions v
+                        WHERE v.memory_id = am.id), 0
+                   ) + 1,
+                   am.value, am.source, am.confidence
+            FROM agent_memory am
+            WHERE am.org_id = $1 AND am.key = $3
+            RETURNING memory_id
+        ), upserted AS (
+            INSERT INTO agent_memory
+                (org_id, memory_type, key, value, source, confidence, last_accessed)
+            VALUES ($1, $2, $3, $4::jsonb, $5, $6, now())
+            ON CONFLICT (org_id, key)
+            DO UPDATE SET value = excluded.value, source = excluded.source,
+                          confidence = excluded.confidence, last_accessed = now()
+            RETURNING id::text AS id
+        )
+        SELECT id FROM upserted
     """
     args = (org_id, memory_type, key, json.dumps(value), source, confidence)
     if conn is not None:

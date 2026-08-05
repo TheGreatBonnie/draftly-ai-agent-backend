@@ -125,3 +125,37 @@ async def test_memory_stats_zero_total_mem_returns_zero_rate():
 
     assert result["stale_memory_count"] == 0
     assert result["stale_memory_rate"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_memory_versions_returns_ordered_history():
+    from src.api.routes.memory import memory_versions
+
+    rows = [
+        {"version": 1, "value": {"v": 1}, "source": "slack",
+         "confidence": 1.0, "superseded_at": "2026-08-05T00:00:00Z"},
+        {"version": 2, "value": {"v": 2}, "source": "email",
+         "confidence": 0.9, "superseded_at": "2026-08-05T01:00:00Z"},
+    ]
+    with patch(
+        "src.api.routes.memory.fetch_all", new_callable=AsyncMock, return_value=rows
+    ) as mock_all:
+        result = await memory_versions(key="key-1", token={"org_id": "org-1"})
+
+    assert result == rows
+    sql = " ".join(mock_all.await_args.args[0].split())
+    assert "agent_memory_versions v" in sql
+    assert "ON m.id = v.memory_id" in sql
+    assert "m.org_id = $1 AND m.key = $2" in sql
+    assert "ORDER BY v.version ASC" in sql
+
+
+@pytest.mark.asyncio
+async def test_memory_versions_returns_empty_without_key_or_org():
+    from src.api.routes.memory import memory_versions
+
+    with patch("src.api.routes.memory.fetch_all", new_callable=AsyncMock) as mock_all:
+        assert await memory_versions(key="", token={"org_id": "org-1"}) == []
+        assert await memory_versions(key="key-1", token={}) == []
+
+    mock_all.assert_not_awaited()

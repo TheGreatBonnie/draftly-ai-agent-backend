@@ -26,3 +26,25 @@ Adds the memory domain tables (episodes, reflections, memory_links, user_prefere
 psql "$COCKROACHDB_URL" -f infrastructure/cockroachdb/migrations/017_add_trace_node_fk.sql
 ```
 Adds `agent_trace_nodes.trace_id → agent_traces(id)` with `ON DELETE CASCADE` so the retention purge of `agent_traces` no longer orphans node rows. A pre-cleanup `DELETE` removes existing orphans so the FK add is safe on live data. The FK lives only in this migration (`schema.sql` does not define `agent_traces` — that table comes from migration 013).
+
+### Aug 5 — Migration 018 (memory version archive)
+```bash
+psql "$COCKROACHDB_URL" -f infrastructure/cockroachdb/migrations/018_add_memory_versions.sql
+```
+Adds `agent_memory_versions`, an archive of `agent_memory` pre-images written atomically by the `store_memory` upsert CTE. `agent_memory` remains the single current row (`UNIQUE (org_id, key)` intact); history is read via `GET /api/memory/versions`. Re-running is safe: all DDL is `IF NOT EXISTS`.
+
+### Aug 5 — Migration 019 (embeddings org_id cleanup)
+```bash
+psql "$COCKROACHDB_URL" -f infrastructure/cockroachdb/migrations/019_embeddings_org_id_cleanup.sql
+```
+Backfills `embeddings.org_id` for `documentation`/`support_threads` rows from the source tables (join on `content_id`), deletes rows still NULL (unreachable dead weight), then sets `org_id NOT NULL`. Every write path already supplies `org_id`, so the constraint is safe. Re-running is safe.
+
+### Aug 5 — Migration 020 (escalated support_thread status)
+```bash
+psql "$COCKROACHDB_URL" -f infrastructure/cockroachdb/migrations/020_add_escalated_status.sql
+```
+Replaces the `support_threads.status` CHECK constraint to allow `'escalated'`
+(open/processing/resolved/escalated). Completed-but-unpublished runs now mark
+their thread `escalated` (ADLC §4 Product metric). Verify the constraint name
+with `SHOW CONSTRAINTS FROM support_threads;` if the auto-named
+`support_threads_status_check` differs.

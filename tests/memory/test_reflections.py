@@ -108,3 +108,57 @@ async def test_link_episode_reflection_flows_literals_and_params():
     assert args[1] == "org-1"
     assert args[2] == "ep-1"
     assert args[3] == "ref-1"
+
+
+@pytest.mark.asyncio
+async def test_store_reflection_uses_conn_when_provided():
+    from src.memory.reflections import store_reflection
+
+    mock_conn = AsyncMock()
+    mock_conn.fetchrow.return_value = {"id": "ref-1"}
+    result = await store_reflection(
+        "org-1", "ep-1", "lesson", 0.8, ["tag"], conn=mock_conn
+    )
+    assert result == "ref-1"
+    mock_conn.fetchrow.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_link_episode_reflection_uses_conn_when_provided():
+    from src.memory.reflections import link_episode_reflection
+
+    mock_conn = AsyncMock()
+    await link_episode_reflection("org-1", "ep-1", "ref-1", conn=mock_conn)
+    mock_conn.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_increment_reflection_frequency_uses_conn_when_provided():
+    from src.memory.reflections import increment_reflection_frequency
+
+    mock_conn = AsyncMock()
+    await increment_reflection_frequency("ref-1", conn=mock_conn)
+    mock_conn.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_find_active_reflection_returns_id():
+    from src.memory.reflections import find_active_reflection
+
+    with patch("src.memory.reflections.fetch_one", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = {"id": "ref-1"}
+        result = await find_active_reflection("org-1", "Always use transactions.")
+    assert result == "ref-1"
+    sql = " ".join(mock_fetch.await_args.args[0].split())
+    assert "status = 'active'" in sql
+    assert "lower(lesson) = lower($2)" in sql
+    assert mock_fetch.await_args.args[1] == "org-1"
+
+
+@pytest.mark.asyncio
+async def test_find_active_reflection_returns_none_when_missing():
+    from src.memory.reflections import find_active_reflection
+
+    with patch("src.memory.reflections.fetch_one", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = None
+        assert await find_active_reflection("org-1", "lesson") is None

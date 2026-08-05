@@ -60,3 +60,21 @@ async def test_store_audit_log_uses_provided_conn():
     mock_conn.execute.assert_awaited_once()
     sql = mock_conn.execute.await_args.args[0]
     assert "INSERT INTO audit_logs" in sql
+
+
+@pytest.mark.asyncio
+async def test_store_memory_archives_pre_image_on_conflict():
+    from src.memory.organizational import store_memory
+
+    with patch(
+        "src.memory.organizational.fetch_one", new_callable=AsyncMock
+    ) as mock_fetch:
+        mock_fetch.return_value = {"id": "mem-1"}
+        await store_memory("org-1", "organizational", "key-1", {"v": 2})
+
+    sql = mock_fetch.await_args.args[0]
+    assert "agent_memory_versions" in sql
+    assert "INSERT INTO agent_memory_versions" in sql
+    assert "MAX(version)" in sql
+    assert "ON CONFLICT (org_id, key)" in sql
+    assert "SELECT id FROM upserted" in sql

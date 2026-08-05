@@ -131,3 +131,25 @@ async def search_memory(
         query_text=q,
         content_type=type if type != "all" else None,
     )
+
+
+@router.get("/versions")
+async def memory_versions(
+    key: str = "",
+    token: dict = Depends(get_verified_token),
+) -> list[dict]:
+    org_id = token.get("org_id")
+    if not org_id or not key:
+        return []
+    return await fetch_all(
+        """
+        SELECT v.version, v.value, v.source, v.confidence,
+               v.superseded_at::text as superseded_at
+        FROM agent_memory_versions v
+        JOIN agent_memory m ON m.id = v.memory_id
+        WHERE m.org_id = $1 AND m.key = $2
+        ORDER BY v.version ASC
+        """,
+        org_id,
+        key,
+    )

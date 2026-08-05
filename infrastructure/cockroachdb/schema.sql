@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS embeddings (
 
 -- Promoted metadata columns (migration 016): org_id, content_type, content_id,
 -- workflow_id were previously stored only in the metadata JSONB column.
-ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS org_id STRING;
+ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS org_id STRING NOT NULL;
 ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS content_type STRING;
 ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS content_id STRING;
 ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS workflow_id STRING;
@@ -135,6 +135,20 @@ CREATE TABLE IF NOT EXISTS agent_memory (
 CREATE INDEX IF NOT EXISTS idx_memory_org ON agent_memory(org_id);
 CREATE INDEX IF NOT EXISTS idx_memory_type ON agent_memory(memory_type);
 CREATE INDEX IF NOT EXISTS idx_memory_key ON agent_memory(key);
+
+-- Archive of agent_memory pre-images on upsert (migration 018).
+CREATE TABLE IF NOT EXISTS agent_memory_versions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    memory_id UUID NOT NULL REFERENCES agent_memory(id) ON DELETE CASCADE,
+    version INT NOT NULL,
+    value JSONB,
+    source STRING,
+    confidence FLOAT,
+    superseded_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_memory_versions_memory
+    ON agent_memory_versions (memory_id, version);
 
 -- 8. Audit Logs
 CREATE TABLE IF NOT EXISTS audit_logs (

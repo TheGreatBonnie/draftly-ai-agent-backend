@@ -16,6 +16,7 @@ from src.agents.nodes.synthesize import synthesize_node
 from src.agents.nodes.write import write_docs_node
 from src.agents.state import DocumentationState
 from src.analytics.traces import AgentTrace, NodeTrace, TraceCollector, _sanitize_state
+from src.database import execute
 from src.integrations.llm import get_token_usage, reset_token_usage
 from src.memory.episodes import store_episode
 
@@ -26,6 +27,20 @@ _trace_collector: TraceCollector | None = None
 def set_trace_collector(collector: TraceCollector) -> None:
     global _trace_collector
     _trace_collector = collector
+
+
+async def _escalate_unpublished_thread(state: DocumentationState) -> None:
+    """Mark a thread escalated when the run finished without publishing."""
+    support_thread_id = state.get("support_thread_id")
+    if support_thread_id and not bool(state.get("published_urls")):
+        await execute(
+            """
+            UPDATE support_threads
+            SET status = 'escalated'
+            WHERE id = $1 AND status <> 'resolved'
+            """,
+            support_thread_id,
+        )
 
 
 async def collect_trace_node(state: DocumentationState) -> dict:
@@ -66,12 +81,30 @@ async def collect_trace_node(state: DocumentationState) -> dict:
             total_duration_ms=sum(t.duration_ms for t in node_traces),
             final_confidence=state.get("confidence_score", 0),
             rubric_results=state.get("rubric_evaluations", []) or [],
+            verification_results=(
+                [state["rubric_status"]] if state.get("rubric_status") else []
+            ),
+            human_decisions=(
+                [
+                    {
+                        "decision": state.get("human_decision", ""),
+                        "feedback": state.get("human_feedback", ""),
+                    }
+                ]
+                if state.get("human_decision")
+                else []
+            ),
             published=bool(state.get("published_urls")),
             publish_urls=state.get("published_urls", []),
         )
         await _trace_collector.collect(trace)
     except Exception as e:
         logger.error("trace_collection_failed", error=str(e))
+
+    try:
+        await _escalate_unpublished_thread(state)
+    except Exception as e:
+        logger.error("thread_escalation_failed", error=str(e))
 
     return result
 
