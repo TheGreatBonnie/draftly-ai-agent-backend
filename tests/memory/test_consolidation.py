@@ -158,6 +158,8 @@ async def test_consolidate_uses_llm_model_and_requesty_provider():
         return_value=(ConsolidationOutput(), ""),
     ) as mock_llm, patch(
         "src.memory.consolidation.settings", consolidation_batch_size=20, llm_model="model-x",
+    ), patch(
+        "src.memory.consolidation.transaction", return_value=AsyncMock(),
     ):
         await consolidate("org-1")
 
