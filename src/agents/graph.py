@@ -66,6 +66,19 @@ async def collect_trace_node(state: DocumentationState) -> dict:
             total_duration_ms=sum(t.duration_ms for t in node_traces),
             final_confidence=state.get("confidence_score", 0),
             rubric_results=state.get("rubric_evaluations", []) or [],
+            verification_results=(
+                [state["rubric_status"]] if state.get("rubric_status") else []
+            ),
+            human_decisions=(
+                [
+                    {
+                        "decision": state.get("human_decision", ""),
+                        "feedback": state.get("human_feedback", ""),
+                    }
+                ]
+                if state.get("human_decision")
+                else []
+            ),
             published=bool(state.get("published_urls")),
             publish_urls=state.get("published_urls", []),
         )
