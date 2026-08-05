@@ -26,3 +26,9 @@ Adds the memory domain tables (episodes, reflections, memory_links, user_prefere
 psql "$COCKROACHDB_URL" -f infrastructure/cockroachdb/migrations/017_add_trace_node_fk.sql
 ```
 Adds `agent_trace_nodes.trace_id → agent_traces(id)` with `ON DELETE CASCADE` so the retention purge of `agent_traces` no longer orphans node rows. A pre-cleanup `DELETE` removes existing orphans so the FK add is safe on live data. The FK lives only in this migration (`schema.sql` does not define `agent_traces` — that table comes from migration 013).
+
+### Aug 5 — Migration 018 (memory version archive)
+```bash
+psql "$COCKROACHDB_URL" -f infrastructure/cockroachdb/migrations/018_add_memory_versions.sql
+```
+Adds `agent_memory_versions`, an archive of `agent_memory` pre-images written atomically by the `store_memory` upsert CTE. `agent_memory` remains the single current row (`UNIQUE (org_id, key)` intact); history is read via `GET /api/memory/versions`. Re-running is safe: all DDL is `IF NOT EXISTS`.
