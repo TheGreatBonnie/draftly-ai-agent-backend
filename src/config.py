@@ -113,6 +113,7 @@ class Settings(BaseSettings):
     # Memory consolidation
     consolidation_enabled: bool = False
     consolidation_interval_hours: int = 6
+    consolidation_batch_size: int = 20
 
     # Verification
     deterministic_verification_enabled: bool = True
