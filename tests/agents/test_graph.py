@@ -90,6 +90,51 @@ async def test_collect_trace_node_empty_optional_fields():
 
 
 @pytest.mark.asyncio
+async def test_published_run_does_not_escalate_thread():
+    state = _state(
+        support_thread_id="thread-1",
+        published_urls=[{"url": "https://example.com/1"}],
+    )
+    with (
+        patch("src.agents.graph.store_episode", new_callable=AsyncMock) as mock_episode,
+        patch("src.agents.graph.execute", new_callable=AsyncMock) as mock_execute,
+    ):
+        mock_episode.return_value = "episode-1"
+        await graph_module.collect_trace_node(state)
+
+    mock_execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unpublished_run_escalates_thread():
+    state = _state(support_thread_id="thread-1")
+    with (
+        patch("src.agents.graph.store_episode", new_callable=AsyncMock) as mock_episode,
+        patch("src.agents.graph.execute", new_callable=AsyncMock) as mock_execute,
+    ):
+        mock_episode.return_value = "episode-1"
+        await graph_module.collect_trace_node(state)
+
+    mock_execute.assert_awaited_once()
+    sql = mock_execute.await_args.args[0]
+    assert "status = 'escalated'" in sql
+    assert "support_threads" in sql
+
+
+@pytest.mark.asyncio
+async def test_unpublished_run_without_thread_does_not_escalate():
+    state = _state(support_thread_id="")
+    with (
+        patch("src.agents.graph.store_episode", new_callable=AsyncMock) as mock_episode,
+        patch("src.agents.graph.execute", new_callable=AsyncMock) as mock_execute,
+    ):
+        mock_episode.return_value = "episode-1"
+        await graph_module.collect_trace_node(state)
+
+    mock_execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_wrapped_node_records_isolated_token_usage():
     async def noisy(state):
         llm_module._token_usage.set(99)

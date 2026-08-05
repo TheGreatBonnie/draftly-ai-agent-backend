@@ -38,3 +38,13 @@ Adds `agent_memory_versions`, an archive of `agent_memory` pre-images written at
 psql "$COCKROACHDB_URL" -f infrastructure/cockroachdb/migrations/019_embeddings_org_id_cleanup.sql
 ```
 Backfills `embeddings.org_id` for `documentation`/`support_threads` rows from the source tables (join on `content_id`), deletes rows still NULL (unreachable dead weight), then sets `org_id NOT NULL`. Every write path already supplies `org_id`, so the constraint is safe. Re-running is safe.
+
+### Aug 5 — Migration 020 (escalated support_thread status)
+```bash
+psql "$COCKROACHDB_URL" -f infrastructure/cockroachdb/migrations/020_add_escalated_status.sql
+```
+Replaces the `support_threads.status` CHECK constraint to allow `'escalated'`
+(open/processing/resolved/escalated). Completed-but-unpublished runs now mark
+their thread `escalated` (ADLC §4 Product metric). Verify the constraint name
+with `SHOW CONSTRAINTS FROM support_threads;` if the auto-named
+`support_threads_status_check` differs.
