@@ -6,9 +6,9 @@ from typing import Literal
 from uuid import uuid4
 
 import structlog
-from langchain_cockroachdb import AsyncCockroachDBSaver  # type: ignore[import-untyped]
 from langchain_core.runnables import RunnableConfig
 
+from src.agents.checkpointer import create_checkpointer
 from src.agents.graph import build_hybrid_graph
 from src.agents.state import DocumentationState
 from src.analytics.events import (
@@ -18,7 +18,6 @@ from src.analytics.events import (
     stop_flusher,
     stop_retention,
 )
-from src.config import settings
 from src.database import close_pool, get_pool
 
 logger = structlog.get_logger()
@@ -88,7 +87,7 @@ async def run_workflow(
 
     config: RunnableConfig = {"configurable": {"thread_id": graph_thread_id}}
 
-    async with AsyncCockroachDBSaver.from_conn_string(settings.cockroachdb_url) as checkpointer:
+    async with create_checkpointer() as checkpointer:
         await checkpointer.setup()
         graph = build_hybrid_graph().compile(checkpointer=checkpointer)
 

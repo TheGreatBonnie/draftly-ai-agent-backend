@@ -128,8 +128,8 @@ async def test_run_slack_pipeline_propagates_workflow_id() -> None:
             new_callable=AsyncMock,
         ) as mock_link,
         patch(
-            "src.agents.runners.slack_runner.AsyncCockroachDBSaver",
-        ) as MockSaver,
+            "src.agents.runners.slack_runner.create_checkpointer",
+        ) as MockFactory,
         patch("src.agents.runners.slack_runner.build_hybrid_graph") as mock_build,
         patch(
             "src.integrations.slack_conversation.conversation_store.add_message",
@@ -145,7 +145,7 @@ async def test_run_slack_pipeline_propagates_workflow_id() -> None:
         mock_saver_instance = AsyncMock()
         mock_saver_instance.__aenter__ = AsyncMock(return_value=mock_checkpointer)
         mock_saver_instance.__aexit__ = AsyncMock(return_value=False)
-        MockSaver.from_conn_string.return_value = mock_saver_instance
+        MockFactory.return_value = mock_saver_instance
         mock_build.return_value.compile.return_value = mock_graph
 
         from src.agents.runners.slack_runner import run_slack_pipeline

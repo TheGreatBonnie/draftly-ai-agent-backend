@@ -3,12 +3,11 @@ from __future__ import annotations
 from typing import Any, cast
 
 import structlog
-from langchain_cockroachdb import AsyncCockroachDBSaver  # type: ignore[import-untyped]
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
+from src.agents.checkpointer import create_checkpointer
 from src.agents.graph import build_hybrid_graph
-from src.config import settings
 from src.memory.reviewer import get_review_thread_id
 
 logger = structlog.get_logger()
@@ -27,7 +26,7 @@ async def resume_review(review_id: str, decision: str, feedback: str = "") -> di
 
     config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
 
-    async with AsyncCockroachDBSaver.from_conn_string(settings.cockroachdb_url) as checkpointer:
+    async with create_checkpointer() as checkpointer:
         await checkpointer.setup()
         graph = build_hybrid_graph().compile(checkpointer=checkpointer)
 

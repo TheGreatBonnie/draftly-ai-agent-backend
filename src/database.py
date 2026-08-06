@@ -37,8 +37,8 @@ async def close_pool() -> None:
 
 async def fetch_one(query: str, *args: Any) -> dict[str, Any] | None:
     pool = await get_pool()
-    row = await pool.fetchrow(query, *args)
-    return cast(dict[str, Any] | None, row)
+    rows = await pool.fetch(query, *args)
+    return cast(dict[str, Any] | None, rows[0] if rows else None)
 
 
 async def fetch_all(query: str, *args: Any) -> list[dict[str, Any]]:
@@ -55,7 +55,8 @@ async def execute(query: str, *args: Any) -> str:
 
 async def fetch_val(query: str, *args: Any) -> Any | None:
     pool = await get_pool()
-    return await pool.fetchval(query, *args)
+    rows = await pool.fetch(query, *args)
+    return rows[0][0] if rows else None
 
 
 @asynccontextmanager
@@ -82,5 +83,5 @@ async def execute_conn(conn: asyncpg.Connection, query: str, *args: Any) -> str:
 async def fetch_one_conn(
     conn: asyncpg.Connection, query: str, *args: Any
 ) -> dict[str, Any] | None:
-    row = await conn.fetchrow(query, *args)
-    return cast(dict[str, Any] | None, row)
+    rows = await conn.fetch(query, *args)
+    return cast(dict[str, Any] | None, rows[0] if rows else None)

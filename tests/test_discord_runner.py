@@ -106,8 +106,8 @@ async def test_run_discord_pipeline_calls_graph() -> None:
 
         with (
             patch(
-                "src.agents.runners.discord_runner.AsyncCockroachDBSaver"
-            ) as MockSaver,
+                "src.agents.runners.discord_runner.create_checkpointer"
+            ) as MockFactory,
             patch("src.agents.runners.discord_runner.build_hybrid_graph") as mock_build,
         ):
             mock_saver_instance = AsyncMock()
@@ -115,7 +115,7 @@ async def test_run_discord_pipeline_calls_graph() -> None:
                 return_value=mock_checkpointer
             )
             mock_saver_instance.__aexit__ = AsyncMock(return_value=False)
-            MockSaver.from_conn_string.return_value = mock_saver_instance
+            MockFactory.return_value = mock_saver_instance
             mock_build.return_value.compile.return_value = mock_graph
 
             from src.agents.runners.discord_runner import run_discord_pipeline
@@ -178,8 +178,8 @@ async def test_run_discord_pipeline_propagates_workflow_id() -> None:
 
         with (
             patch(
-                "src.agents.runners.discord_runner.AsyncCockroachDBSaver"
-            ) as MockSaver,
+                "src.agents.runners.discord_runner.create_checkpointer"
+            ) as MockFactory,
             patch("src.agents.runners.discord_runner.build_hybrid_graph") as mock_build,
         ):
             mock_saver_instance = AsyncMock()
@@ -187,7 +187,7 @@ async def test_run_discord_pipeline_propagates_workflow_id() -> None:
                 return_value=mock_checkpointer
             )
             mock_saver_instance.__aexit__ = AsyncMock(return_value=False)
-            MockSaver.from_conn_string.return_value = mock_saver_instance
+            MockFactory.return_value = mock_saver_instance
             mock_build.return_value.compile.return_value = mock_graph
 
             from src.agents.runners.discord_runner import run_discord_pipeline

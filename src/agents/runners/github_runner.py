@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import structlog
-from langchain_cockroachdb import AsyncCockroachDBSaver  # type: ignore[import-untyped]
 from langchain_core.runnables import RunnableConfig
 
+from src.agents.checkpointer import create_checkpointer
 from src.agents.graph import build_hybrid_graph
 from src.agents.state import DocumentationState
-from src.config import settings
 from src.integrations.github_app import post_issue_comment
 from src.memory.organizations import (
     get_org_by_github,
@@ -137,7 +136,7 @@ async def run_github_pipeline(payload: dict, installation_token: str) -> None:
             "configurable": {"thread_id": f"github-{repo['id']}-{issue['number']}"}
         }
 
-        async with AsyncCockroachDBSaver.from_conn_string(settings.cockroachdb_url) as checkpointer:
+        async with create_checkpointer() as checkpointer:
             await checkpointer.setup()
             graph = build_hybrid_graph().compile(checkpointer=checkpointer)
 

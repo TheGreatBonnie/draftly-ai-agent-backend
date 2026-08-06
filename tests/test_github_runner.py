@@ -146,8 +146,8 @@ async def test_run_github_pipeline_propagates_workflow_id() -> None:
             new_callable=AsyncMock,
         ) as mock_link,
         patch(
-            "src.agents.runners.github_runner.AsyncCockroachDBSaver",
-        ) as MockSaver,
+            "src.agents.runners.github_runner.create_checkpointer",
+        ) as MockFactory,
         patch("src.agents.runners.github_runner.build_hybrid_graph") as mock_build,
     ):
         mock_get_org.return_value = {"id": "org-1", "name": "Test Org"}
@@ -159,7 +159,7 @@ async def test_run_github_pipeline_propagates_workflow_id() -> None:
         mock_saver_instance = AsyncMock()
         mock_saver_instance.__aenter__ = AsyncMock(return_value=mock_checkpointer)
         mock_saver_instance.__aexit__ = AsyncMock(return_value=False)
-        MockSaver.from_conn_string.return_value = mock_saver_instance
+        MockFactory.return_value = mock_saver_instance
         mock_build.return_value.compile.return_value = mock_graph
 
         from src.agents.runners.github_runner import run_github_pipeline

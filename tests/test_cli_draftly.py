@@ -35,7 +35,7 @@ async def test_run_workflow_propagates_workflow_id() -> None:
             "src.memory.organizations.link_workflow_to_document",
             new_callable=AsyncMock,
         ) as mock_link,
-        patch("src.cli.draftly.AsyncCockroachDBSaver") as MockSaver,
+        patch("src.cli.draftly.create_checkpointer") as MockFactory,
         patch("src.cli.draftly.build_hybrid_graph") as mock_build,
     ):
         mock_checkpointer = AsyncMock()
@@ -45,7 +45,7 @@ async def test_run_workflow_propagates_workflow_id() -> None:
         mock_saver_instance = AsyncMock()
         mock_saver_instance.__aenter__ = AsyncMock(return_value=mock_checkpointer)
         mock_saver_instance.__aexit__ = AsyncMock(return_value=False)
-        MockSaver.from_conn_string.return_value = mock_saver_instance
+        MockFactory.return_value = mock_saver_instance
         mock_build.return_value.compile.return_value = mock_graph
 
         from src.cli.draftly import run_workflow

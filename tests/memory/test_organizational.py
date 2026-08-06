@@ -23,12 +23,12 @@ async def test_store_memory_uses_provided_conn():
     from src.memory.organizational import store_memory
 
     mock_conn = AsyncMock()
-    mock_conn.fetchrow.return_value = {"id": "mem-1"}
+    mock_conn.fetch.return_value = [{"id": "mem-1"}]
     result = await store_memory(
         "org-1", "organizational", "key-1", {"v": 1}, conn=mock_conn
     )
     assert result == "mem-1"
-    mock_conn.fetchrow.assert_awaited_once()
+    mock_conn.fetch.assert_awaited_once()
 
 
 @pytest.mark.asyncio

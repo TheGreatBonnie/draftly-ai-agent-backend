@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 import structlog
-from langchain_cockroachdb import AsyncCockroachDBSaver  # type: ignore[import-untyped]
 from langchain_core.runnables import RunnableConfig
 
+from src.agents.checkpointer import create_checkpointer
 from src.agents.graph import build_hybrid_graph
 from src.agents.state import DocumentationState
-from src.config import settings
 
 logger = structlog.get_logger()
 
@@ -162,9 +161,7 @@ async def run_slack_pipeline(
             graph_thread_id=state["graph_thread_id"],
         )
 
-        async with AsyncCockroachDBSaver.from_conn_string(
-            settings.cockroachdb_url,
-        ) as checkpointer:
+        async with create_checkpointer() as checkpointer:
             await checkpointer.setup()
             graph = build_hybrid_graph().compile(checkpointer=checkpointer)
             structlog.contextvars.bind_contextvars(workflow_id=workflow_id, org_id=org_id)

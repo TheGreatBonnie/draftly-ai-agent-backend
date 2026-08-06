@@ -115,12 +115,12 @@ async def test_store_reflection_uses_conn_when_provided():
     from src.memory.reflections import store_reflection
 
     mock_conn = AsyncMock()
-    mock_conn.fetchrow.return_value = {"id": "ref-1"}
+    mock_conn.fetch.return_value = [{"id": "ref-1"}]
     result = await store_reflection(
         "org-1", "ep-1", "lesson", 0.8, ["tag"], conn=mock_conn
     )
     assert result == "ref-1"
-    mock_conn.fetchrow.assert_awaited_once()
+    mock_conn.fetch.assert_awaited_once()
 
 
 @pytest.mark.asyncio
